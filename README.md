@@ -50,10 +50,12 @@ original utility.
 
 ### From the update repository
 
-Add `https://foraxxpaletteutility.com/FPU/` under Resources > Updates >
-Manage Repositories, then check for updates. The repository index serves this
-version to PixInsight 1.9.4 and later 1.9.x, and the legacy 1.16 package to
-1.8.9-3 through 1.9.3.
+Add `https://pixinsight.psf-guard.com/` under Resources > Updates > Manage
+Repositories, then check for updates. That repository
+([theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository))
+serves this version to PixInsight 1.9.4 and later 1.9.x, and the legacy 1.16
+package to 1.8.9-3 through 1.9.3. The original publisher's URL,
+`https://foraxxpaletteutility.com/FPU/`, still serves 1.16 only.
 
 ### By hand
 
@@ -89,9 +91,12 @@ PIXINSIGHT_DIR=~/PixInsight ./test/run-headless.sh
 ./build.sh
 ```
 
-writes `dist/` with the new package zip, the legacy zip and `updates.xri`
-with the right SHA-1 digests. Upload the contents of `dist/` to the
-repository URL. The scripts are not code-signed; PixInsight runs unsigned
+writes `dist/` with the new package zip, the legacy zip and a standalone
+`updates.xri` with the right SHA-1 digests. To publish, copy the new zip into
+`packages/` of
+[theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository),
+update its `packages.json`, and push; `dist/updates.xri` is only needed if you
+host the package somewhere on its own. The scripts are not code-signed; PixInsight runs unsigned
 scripts with a console warning. Signing is optional for scripts and can be
 done with Script > Development > SigningKeys and CodeSign.
 
