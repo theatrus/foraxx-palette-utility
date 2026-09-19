@@ -8,7 +8,8 @@
  * construction and the standard curves adjustments. This file has no user
  * interface and can be included on its own (the test suite does this).
  *
- * Copyright (C) 2023-2024 Paul Hancock (original script)
+ * Copyright (C) 2023-2024 Paul Hancock, Paulyman Astro (original script,
+ * published at https://foraxxpaletteutility.com/)
  * Ported to the PixInsight 1.9.4 V8 JavaScript runtime, 2026.
  *
  * Foraxx expressions: The Coldest Nights, "Dynamic Narrowband Combinations

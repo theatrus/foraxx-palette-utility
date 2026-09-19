@@ -41,6 +41,7 @@ cat > "$dist/updates.xri" <<XRI
          Foraxx Palette Utility - For the creation of Foraxx Palette Narrowband Images.
       </p>
       <p>
+         Original script by Paul Hancock, Paulyman Astro.
          Copyright (c) 2023-2024 Paul Hancock. All Rights Reserved.
       </p>
    </description>

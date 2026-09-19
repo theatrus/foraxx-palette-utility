@@ -4,7 +4,7 @@ A PixInsight script that builds a Foraxx palette image (or a plain SHO, HOO,
 HSO or OHS mapping) from stretched, starless narrowband images, plus an
 optional colour stars image from the matching stretched star images.
 
-This is a port of Paul Hancock's Foraxx Palette Utility to the V8 JavaScript
+This is a port of Paul Hancock's (Paulyman Astro) Foraxx Palette Utility to the V8 JavaScript
 runtime that PixInsight 1.9.4 Lockhart introduced. The original script ran on
 the old SpiderMonkey engine and its update package was limited to PixInsight
 1.8.9-3 through 1.9.2. See [Credits](#credits).
@@ -112,10 +112,12 @@ Changes needed for the V8 runtime, following Pleiades' porting guide:
 
 ## Credits
 
-- **Paul Hancock** wrote the original Foraxx Palette Utility (versions 1.0
-  to 1.16, 2023-2024), distributed from
-  <https://foraxxpaletteutility.com/>. The expressions, curves and
-  saturation settings here are his. Copyright (c) 2023-2024 Paul Hancock.
+- **Paul Hancock (Paulyman Astro)** wrote and published the original
+  Foraxx Palette Utility (versions 1.0 to 1.16, 2023-2024), distributed
+  from <https://foraxxpaletteutility.com/> and presented on the Paulyman
+  Astro YouTube channel (<https://www.youtube.com/watch?v=cl3_r3bL8Ys>).
+  The expressions, curves and saturation settings here are his.
+  Copyright (c) 2023-2024 Paul Hancock.
 - The Foraxx palette and its dynamic PixelMath expressions come from
   **The Coldest Nights**:
   <https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/>.

@@ -3,7 +3,8 @@
  * Foraxx Palette Utility
  *
  * ForaxxPalette.js
- * Copyright (C) 2023-2024, Paul Hancock
+ * Copyright (C) 2023-2024, Paul Hancock (Paulyman Astro)
+ * Original script published at https://foraxxpaletteutility.com/
  *
  * Builds a Foraxx palette image from stretched, starless narrowband images,
  * plus an optional colour stars image from the matching stretched star
@@ -43,6 +44,7 @@
                starless SII/Ha/OIII or Ha/OIII images, plus an optional colour \
                stars image.<br/>\
                <br/>\
+               Original script by Paul Hancock, Paulyman Astro.<br/>\
                Copyright &copy; 2023-2024 Paul Hancock.
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
