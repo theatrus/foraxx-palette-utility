@@ -1,0 +1,515 @@
+/*
+ ****************************************************************************
+ * Foraxx Palette Utility - headless test suite
+ *
+ * Run with test/run-headless.sh, which fills in the two placeholders below
+ * and starts PixInsight in automation mode. The suite builds synthetic
+ * SII/Ha/OIII images, runs the engine in every mode, and checks the output
+ * pixels against the Foraxx formulas computed in plain JavaScript.
+ ****************************************************************************
+ */
+
+#engine v8
+
+CoreApplication.ensureMinimumVersion( 1, 9, 4 );
+
+const TITLE = "Foraxx Palette Utility";
+const VERSION = "test";
+const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
+const RESULT_PATH = "@RESULT_PATH@";
+
+#include "@ENGINE_PATH@"
+#include "@DIALOG_PATH@"
+
+const W = 64, H = 48;
+const TOLERANCE = 1e-5;
+
+let report = [];
+let failures = 0;
+
+function log( text )
+{
+   report.push( text );
+   console.writeln( text );
+}
+
+function check( condition, what )
+{
+   if ( condition )
+      log( "ok   - " + what );
+   else
+   {
+      ++failures;
+      log( "FAIL - " + what );
+   }
+}
+
+function near( a, b )
+{
+   return Math.abs( a - b ) <= TOLERANCE;
+}
+
+/*
+ * Creates a 32-bit float grayscale image whose pixel (x,y) is fn( x, y ).
+ */
+function makeImage( id, fn )
+{
+   let window = new ImageWindow( W, H, 1, 32, true, false, id );
+   let view = window.mainView;
+   view.beginProcess( UndoFlag.NoSwapFile );
+   let it = new ImageIterator( view.image, 0 );
+   for ( let y = 0; y < H; ++y )
+      for ( let x = 0; x < W; ++x )
+         it[y][x] = fn( x, y );
+   it.free();
+   view.endProcess();
+   window.show();
+   return view;
+}
+
+/*
+ * The Foraxx formulas in plain JavaScript. ~x is 1-x in PixelMath.
+ */
+const F = {
+   o( O ) { return Math.pow( O, 1 - O ); },
+   ho( Ha, O ) { let p = Ha*O; return Math.pow( p, 1 - p ); },
+   blend( f, a, b ) { return f*a + (1 - f)*b; },
+   clamp( v ) { return Math.min( 1, Math.max( 0, v ) ); }
+};
+
+/*
+ * Pixel value functions for the synthetic inputs. All stay inside [0,1] and
+ * avoid exact zeros so that pow() is well behaved.
+ */
+const src = {
+   sii:       ( x, y ) => 0.05 + 0.9*( 1 - x/(W-1) )*0.5 + 0.25*( y/(H-1) ),
+   ha:        ( x, y ) => 0.05 + 0.9*( x/(W-1) ),
+   oiii:      ( x, y ) => 0.05 + 0.9*( y/(H-1) ),
+   siiStars:  ( x, y ) => 0.10 + 0.6*( ( x + y ) % 7 )/6,
+   haStars:   ( x, y ) => 0.20 + 0.7*( ( x*3 + y ) % 5 )/4,
+   oiiiStars: ( x, y ) => 0.15 + 0.5*( ( x + y*2 ) % 9 )/8
+};
+
+const samplePoints = [ [0, 0], [W-1, 0], [0, H-1], [W-1, H-1], [17, 23], [40, 9], [31, 31] ];
+
+function checkGray( view, what, expected )
+{
+   let image = view.image;
+   check( image.numberOfChannels == 1 && image.width == W && image.height == H, what + ": grayscale " + W + "x" + H );
+   let bad = 0;
+   for ( let [x, y] of samplePoints )
+      if ( !near( image.sample( x, y, 0 ), expected( x, y ) ) )
+         ++bad;
+   check( bad == 0, what + ": pixel values match formula" );
+}
+
+function checkRGB( view, what, expected )
+{
+   let image = view.image;
+   check( image.isColor && image.numberOfChannels == 3 && image.width == W && image.height == H, what + ": RGB " + W + "x" + H );
+   let bad = 0;
+   for ( let [x, y] of samplePoints )
+   {
+      let e = expected( x, y );
+      for ( let c = 0; c < 3; ++c )
+         if ( !near( image.sample( x, y, c ), e[c] ) )
+            ++bad;
+   }
+   check( bad == 0, what + ": pixel values match formula" );
+}
+
+function checkInRange( view, what )
+{
+   let image = view.image;
+   let ok = true;
+   for ( let c = 0; c < image.numberOfChannels; ++c )
+      if ( image.minimum( new Rect, c, c ) < 0 || image.maximum( new Rect, c, c ) > 1 )
+         ok = false;
+   check( ok, what + ": all samples in [0,1]" );
+}
+
+function run()
+{
+   log( "Foraxx Palette Utility test suite - " + (new Date).toISOString() );
+   log( "PixInsight " + CoreApplication.versionMajor + "." + CoreApplication.versionMinor + "." + CoreApplication.versionRelease );
+
+   let views = {};
+   for ( let key in src )
+      views[key] = makeImage( "T_" + key, src[key] );
+
+   // ---- Parameter validation -------------------------------------------
+
+   {
+      let p = new ForaxxParameters;
+      check( p.validate().indexOf( "SII" ) >= 0 && p.validate().indexOf( "Ha stars" ) >= 0, "validate: reports missing inputs" );
+
+      p.threeChannels = false;
+      p.createStars = false;
+      p.ha = views.ha;
+      p.oiii = views.oiii;
+      check( p.validate() == "", "validate: Ha + OIII only is complete" );
+
+      p.createStars = true;
+      check( p.validate().indexOf( "Ha stars" ) >= 0, "validate: stars mode needs star images" );
+
+      let small = makeImage( "T_small", () => 0.5 );
+      let smallWindow = small.window;
+      let old = p.oiii;
+      p.oiii = new ImageWindow( 10, 10, 1, 32, true, false, "T_tiny" ).mainView;
+      p.createStars = false;
+      check( p.validate().indexOf( "same dimensions" ) >= 0, "validate: rejects mismatched image sizes" );
+      p.oiii.window.forceClose();
+      p.oiii = old;
+      smallWindow.forceClose();
+   }
+
+   // ---- Mode A: three channels, stars, raw output ----------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = true;
+      p.createStars = true;
+      p.applyAdjustments = false;
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+      p.siiStars = views.siiStars; p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "Foraxx", "A: Foraxx image id is 'Foraxx' (got " + r.foraxx.id + ")" );
+      check( r.stars != null && r.stars.id == "Foraxx_stars", "A: stars image id is 'Foraxx_stars'" );
+      check( r.factors.length == 2 && r.factors[0].id == "ho" && r.factors[1].id == "o", "A: factor images 'ho' and 'o' created" );
+
+      checkGray( r.factors[0], "A: ho", ( x, y ) => F.ho( src.ha( x, y ), src.oiii( x, y ) ) );
+      checkGray( r.factors[1], "A: o", ( x, y ) => F.o( src.oiii( x, y ) ) );
+      checkRGB( r.foraxx, "A: Foraxx", ( x, y ) =>
+      {
+         let Ha = src.ha( x, y ), O = src.oiii( x, y ), S = src.sii( x, y );
+         let o = F.o( O ), ho = F.ho( Ha, O );
+         return [ F.clamp( F.blend( o, S, Ha ) ), F.clamp( F.blend( ho, Ha, O ) ), O ];
+      } );
+      checkRGB( r.stars, "A: Foraxx_stars", ( x, y ) =>
+      {
+         let Ha = src.ha( x, y ), O = src.oiii( x, y );
+         let o = F.o( O ), ho = F.ho( Ha, O );
+         let Hs = src.haStars( x, y ), Os = src.oiiiStars( x, y ), Ss = src.siiStars( x, y );
+         return [ F.clamp( F.blend( o, Ss, Hs ) ), F.clamp( F.blend( ho, Hs, Os ) ), Os ];
+      } );
+   }
+
+   // ---- Mode B: two channels, stars, raw output; ids get suffixes ------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.createStars = true;
+      p.applyAdjustments = false;
+      p.ha = views.ha; p.oiii = views.oiii;
+      p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "Foraxx01", "B: second Foraxx image id is 'Foraxx01' (got " + r.foraxx.id + ")" );
+      check( r.stars != null && r.stars.id == "Foraxx01_stars", "B: stars image id is 'Foraxx01_stars'" );
+      check( r.factors.length == 1 && r.factors[0].id == "ho01", "B: only the 'ho' factor is created, as 'ho01'" );
+
+      checkRGB( r.foraxx, "B: Foraxx01", ( x, y ) =>
+      {
+         let Ha = src.ha( x, y ), O = src.oiii( x, y );
+         let ho = F.ho( Ha, O );
+         return [ Ha, F.clamp( F.blend( ho, Ha, O ) ), O ];
+      } );
+      checkRGB( r.stars, "B: Foraxx01_stars", ( x, y ) =>
+      {
+         let Ha = src.ha( x, y ), O = src.oiii( x, y );
+         let ho = F.ho( Ha, O );
+         let Hs = src.haStars( x, y ), Os = src.oiiiStars( x, y );
+         return [ Hs, F.clamp( F.blend( ho, Hs, Os ) ), Os ];
+      } );
+   }
+
+   // ---- Mode C: three channels, no stars, with adjustments -------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = true;
+      p.createStars = false;
+      p.applyAdjustments = true;
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "Foraxx02", "C: Foraxx image id is 'Foraxx02' (got " + r.foraxx.id + ")" );
+      check( r.stars == null && View.viewById( "Foraxx02_stars" ) == null, "C: no stars image" );
+      check( r.foraxx.image.isColor, "C: Foraxx02 is RGB" );
+      checkInRange( r.foraxx, "C: Foraxx02" );
+
+      // The adjustments must change the image: compare with the raw result.
+      let raw = View.viewById( "Foraxx" ).image;
+      let adjusted = r.foraxx.image;
+      let differs = false;
+      for ( let [x, y] of samplePoints )
+         for ( let c = 0; c < 3; ++c )
+            if ( !near( raw.sample( x, y, c ), adjusted.sample( x, y, c ) ) )
+               differs = true;
+      check( differs, "C: curves and saturation adjustments were applied" );
+      check( r.foraxx.canGoBackward, "C: adjustments are on the undo history" );
+   }
+
+   // ---- Mode D: two channels, no stars, with adjustments ---------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.createStars = false;
+      p.applyAdjustments = true;
+      p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "Foraxx03", "D: Foraxx image id is 'Foraxx03' (got " + r.foraxx.id + ")" );
+      check( r.stars == null, "D: no stars image" );
+      checkInRange( r.foraxx, "D: Foraxx03" );
+   }
+
+   // ---- Stars adjustments ----------------------------------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.createStars = true;
+      p.applyAdjustments = true;
+      p.ha = views.ha; p.oiii = views.oiii;
+      p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let r = buildForaxx( p );
+      check( r.stars != null && r.stars.id == "Foraxx04_stars", "E: stars image id is 'Foraxx04_stars'" );
+      checkInRange( r.stars, "E: Foraxx04_stars" );
+      let raw = View.viewById( "Foraxx01_stars" ).image;
+      let differs = false;
+      for ( let [x, y] of samplePoints )
+         if ( !near( raw.sample( x, y, 0 ), r.stars.image.sample( x, y, 0 ) ) )
+            differs = true;
+      check( differs, "E: star curves were applied" );
+   }
+
+   // ---- Mode F: static SHO palette, three channels, stars, raw ---------
+
+   {
+      let p = new ForaxxParameters;
+      p.palette = "SHO";
+      p.outputId = "SHO";
+      p.applyAdjustments = false;
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+      p.siiStars = views.siiStars; p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let before = ImageWindow.windows.length;
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "SHO" && r.stars.id == "SHO_stars", "F: SHO ids (got " + r.foraxx.id + ")" );
+      check( r.factors.length == 0 && ImageWindow.windows.length == before + 2, "F: static palette creates no factor images" );
+      checkRGB( r.foraxx, "F: SHO", ( x, y ) => [ src.sii( x, y ), src.ha( x, y ), src.oiii( x, y ) ] );
+      checkRGB( r.stars, "F: SHO_stars", ( x, y ) => [ src.siiStars( x, y ), src.haStars( x, y ), src.oiiiStars( x, y ) ] );
+   }
+
+   // ---- Mode G: HOO, two channels, custom output identifier ------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.palette = "HOO";
+      p.outputId = "M16_HOO";
+      p.createStars = false;
+      p.applyAdjustments = false;
+      p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      check( r.foraxx.id == "M16_HOO" && r.stars == null, "G: custom identifier is used (got " + r.foraxx.id + ")" );
+      checkRGB( r.foraxx, "G: M16_HOO", ( x, y ) => [ src.ha( x, y ), src.oiii( x, y ), src.oiii( x, y ) ] );
+   }
+
+   // ---- Mode H: channel gains, no factor images ------------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.siiGain = 0.8;
+      p.haGain = 1.0;
+      p.oiiiGain = 1.5;
+      p.createFactorImages = false;
+      p.createStars = true;
+      p.applyAdjustments = false;
+      p.outputId = "Gain";
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+      p.siiStars = views.siiStars; p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let before = ImageWindow.windows.length;
+      let r = buildForaxx( p );
+      check( r.factors.length == 0 && ImageWindow.windows.length == before + 2, "H: factor images skipped when disabled" );
+      let gained = ( x, y ) =>
+      {
+         let S = Math.min( 1, 0.8*src.sii( x, y ) ), Ha = src.ha( x, y ), O = Math.min( 1, 1.5*src.oiii( x, y ) );
+         return { S, Ha, O, o: F.o( O ), ho: F.ho( Ha, O ) };
+      };
+      checkRGB( r.foraxx, "H: Gain (gains applied inside the Foraxx factors)", ( x, y ) =>
+      {
+         let g = gained( x, y );
+         return [ F.clamp( F.blend( g.o, g.S, g.Ha ) ), F.clamp( F.blend( g.ho, g.Ha, g.O ) ), g.O ];
+      } );
+      checkRGB( r.stars, "H: Gain_stars (stars unscaled, factors from scaled starless)", ( x, y ) =>
+      {
+         let g = gained( x, y );
+         let Hs = src.haStars( x, y ), Os = src.oiiiStars( x, y ), Ss = src.siiStars( x, y );
+         return [ F.clamp( F.blend( g.o, Ss, Hs ) ), F.clamp( F.blend( g.ho, Hs, Os ) ), Os ];
+      } );
+   }
+
+   // ---- Mode I: combined image with the stars screened in --------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.createStars = true;
+      p.createCombined = true;
+      p.applyAdjustments = true;
+      p.outputId = "Comb";
+      p.ha = views.ha; p.oiii = views.oiii;
+      p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
+
+      let r = buildForaxx( p );
+      check( r.combined != null && r.combined.id == "Comb_combined", "I: combined image id is 'Comb_combined'" );
+      let fi = r.foraxx.image, si = r.stars.image;
+      checkRGB( r.combined, "I: Comb_combined = ~(~result*~stars)", ( x, y ) =>
+         [0, 1, 2].map( c => 1 - (1 - fi.sample( x, y, c ))*(1 - si.sample( x, y, c )) ) );
+
+      // Without stars there is no combined image even if requested.
+      p.createStars = false;
+      let r2 = buildForaxx( p );
+      check( r2.combined == null && r2.foraxx.id == "Comb01", "I: no combined image without a stars image" );
+   }
+
+   // ---- Settings round trip -------------------------------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.palette = "HOO";
+      p.siiGain = 0.75; p.haGain = 1.25; p.oiiiGain = 2.0;
+      p.outputId = "Saved_Id";
+      p.createStars = false;
+      p.createCombined = true;
+      p.createFactorImages = false;
+      p.applyAdjustments = false;
+      p.save();
+
+      let q = new ForaxxParameters;
+      q.load();
+      check( q.threeChannels === false && q.palette == "HOO" && q.outputId == "Saved_Id", "settings: booleans and strings round trip" );
+      check( near( q.siiGain, 0.75 ) && near( q.haGain, 1.25 ) && near( q.oiiiGain, 2.0 ), "settings: gains round trip" );
+      check( q.createStars === false && q.createCombined === true && q.createFactorImages === false && q.applyAdjustments === false, "settings: option flags round trip" );
+
+      for ( let key of [ "threeChannels", "palette", "siiGain", "haGain", "oiiiGain", "outputId", "createStars", "createCombined", "createFactorImages", "applyAdjustments" ] )
+         Settings.remove( SETTINGS_KEY + "/" + key );
+      let d = new ForaxxParameters;
+      d.load();
+      check( d.threeChannels === true && d.palette == "Foraxx" && d.outputId == "Foraxx", "settings: defaults after removal" );
+   }
+
+   // ---- Validation of the new options ---------------------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.ha = views.ha; p.oiii = views.oiii;
+      p.createStars = false;
+
+      p.palette = "SHO";
+      check( p.validate().indexOf( "needs SII" ) >= 0, "validate: SHO needs three channels" );
+      p.palette = "Foraxx";
+
+      p.outputId = "1bad";
+      check( p.validate().indexOf( "not a valid image identifier" ) >= 0, "validate: rejects a bad output identifier" );
+      p.outputId = "ok_id";
+
+      p.oiiiGain = 0;
+      check( p.validate().indexOf( "OIII gain" ) >= 0, "validate: rejects a zero gain" );
+      p.oiiiGain = 1;
+
+      check( p.validate() == "", "validate: accepts the corrected selection" );
+      check( palettesFor( false ).map( x => x.id ).join() == "Foraxx,HOO", "palettesFor: two-channel palettes are Foraxx and HOO" );
+      check( palettesFor( true ).length == 5, "palettesFor: five palettes with three channels" );
+   }
+
+   // ---- Dialog: construct it and drive its event handlers ---------------
+
+   {
+      let p = new ForaxxParameters;
+      let d = new ForaxxDialog( p );
+      check( d.paletteIds.join() == "Foraxx,SHO,HOO,HSO,OHS" && d.palette_ComboBox.currentItem == 0, "dialog: three-channel palette list, Foraxx selected" );
+      check( d.threeChannels_RadioButton.checked && d.sii_Row.viewList.enabled && d.factors_CheckBox.enabled, "dialog: default control state" );
+
+      d.twoChannels_RadioButton.onCheck( true );
+      check( p.threeChannels === false && d.paletteIds.join() == "Foraxx,HOO", "dialog: two channels trims the palette list" );
+      check( !d.sii_Row.viewList.enabled && !d.sii_Row.starsViewList.enabled && !d.siiGain_Control.enabled, "dialog: two channels disables the SII controls" );
+
+      d.palette_ComboBox.onItemSelected( 1 );
+      check( p.palette == "HOO" && p.outputId == "HOO" && d.outputId_Edit.text == "HOO", "dialog: palette change follows into the output identifier" );
+      check( !d.factors_CheckBox.enabled, "dialog: factor images disabled for a static palette" );
+
+      d.outputId_Edit.onTextUpdated( " M16_test " );
+      d.palette_ComboBox.onItemSelected( 0 );
+      check( p.palette == "Foraxx" && p.outputId == "M16_test", "dialog: a custom output identifier is kept on palette change" );
+
+      d.stars_CheckBox.onCheck( false );
+      check( p.createStars === false && !d.combined_CheckBox.enabled && !d.ha_Row.starsViewList.enabled && !d.oiii_Row.starsLabel.enabled, "dialog: no stars disables the stars controls" );
+
+      d.haGain_Control.onValueUpdated( 1.5 );
+      d.adjustments_CheckBox.onCheck( false );
+      d.combined_CheckBox.onCheck( true );
+      check( near( p.haGain, 1.5 ) && p.applyAdjustments === false && p.createCombined === true, "dialog: gain and check boxes update the parameters" );
+
+      d.ha_Row.viewList.onViewSelected( views.ha );
+      check( p.ha != null && p.ha.id == "T_ha", "dialog: view list selection stores the view" );
+      d.ha_Row.viewList.onViewSelected( null );
+      check( p.ha === null, "dialog: clearing a view list stores null" );
+
+      d.reset_ToolButton.onClick();
+      check( p.threeChannels && p.palette == "Foraxx" && p.outputId == "Foraxx" && p.createStars && near( p.haGain, 1 ), "dialog: reset restores the defaults" );
+      check( d.threeChannels_RadioButton.checked && d.outputId_Edit.text == "Foraxx" && d.stars_CheckBox.checked && d.sii_Row.viewList.enabled, "dialog: reset refreshes the controls" );
+      check( p.validate().indexOf( "select an image" ) >= 0, "dialog: parameters still validate after reset" );
+
+      // Loaded settings must show up in the controls.
+      let q = new ForaxxParameters;
+      q.threeChannels = false; q.palette = "HOO"; q.outputId = "Loaded"; q.oiiiGain = 2.25; q.createFactorImages = false;
+      let e = new ForaxxDialog( q );
+      check( e.twoChannels_RadioButton.checked && e.palette_ComboBox.currentItem == 1 && e.outputId_Edit.text == "Loaded"
+             && near( e.oiiiGain_Control.value, 2.25 ) && !e.factors_CheckBox.checked, "dialog: constructed from loaded parameters" );
+   }
+
+   // ---- Error path: buildForaxx refuses an incomplete selection --------
+
+   {
+      let p = new ForaxxParameters;
+      p.ha = views.ha;
+      let threw = false;
+      try { buildForaxx( p ); } catch ( e ) { threw = e.message.indexOf( "select an image" ) >= 0; }
+      check( threw, "buildForaxx throws on an incomplete selection" );
+   }
+}
+
+function closeAllWindows()
+{
+   for ( let window of ImageWindow.windows )
+      window.forceClose();
+}
+
+(() =>
+{
+   console.show();
+   try
+   {
+      run();
+   }
+   catch ( e )
+   {
+      ++failures;
+      log( "FAIL - uncaught error: " + e.message + "\n" + (e.stack || "") );
+   }
+   try { closeAllWindows(); } catch ( e ) { log( "warning: closing windows: " + e.message ); }
+
+   log( failures == 0 ? "RESULT: PASS" : "RESULT: FAIL (" + failures + " failed)" );
+   File.writeTextFile( RESULT_PATH, report.join( "\n" ) + "\n" );
+})();
