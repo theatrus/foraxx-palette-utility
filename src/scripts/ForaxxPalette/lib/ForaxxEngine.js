@@ -117,6 +117,55 @@ class ForaxxParameters
       this.createCombined = false;     // also screen the stars onto the result
       this.createFactorImages = true;  // show the o and ho factor images (Foraxx only)
       this.applyAdjustments = true;    // apply the standard curves and saturation boost
+
+      // Channel shaping: a midtones transfer after the gain (0.5 = none;
+      // lower lifts faint signal without pushing highlights into clipping).
+      this.siiMidtone = 0.5;
+      this.haMidtone = 0.5;
+      this.oiiiMidtone = 0.5;
+
+      // Mask shaping for the dynamic factors (Foraxx only). Bias is a
+      // midtones balance (0.5 = none; lower brightens the mask, so SII
+      // replaces Ha in red, and Ha replaces OIII in green, over more of the
+      // image). Contrast steepens the mask around 0.5 (1 = none).
+      this.oBias = 0.5;
+      this.oContrast = 1.0;
+      this.hoBias = 0.5;
+      this.hoContrast = 1.0;
+
+      // Channel-ratio masks: OIII/(Ha+OIII) and SII/(Ha+SII), faded out
+      // where the mean signal is below the threshold.
+      this.createRatioMasks = false;
+      this.ratioThreshold = 0.05;
+
+      // Protected saturation: boost through a mask that excludes the dark
+      // background and already saturated pixels.
+      this.protectedSaturation = false;
+      this.saturationAmount = 0.25;
+      this.saturationBackground = 0.10;
+
+      // Colour-preserving brightness: a curve on CIE L* only (0 = none).
+      this.lightnessLift = 0.0;
+   }
+
+   /*
+    * Every option that is remembered between runs: [property, DataType].
+    */
+   static get persisted()
+   {
+      return [
+         [ "threeChannels", DataType.Boolean ], [ "palette", DataType.String ],
+         [ "siiGain", DataType.Double ], [ "haGain", DataType.Double ], [ "oiiiGain", DataType.Double ],
+         [ "siiMidtone", DataType.Double ], [ "haMidtone", DataType.Double ], [ "oiiiMidtone", DataType.Double ],
+         [ "oBias", DataType.Double ], [ "oContrast", DataType.Double ],
+         [ "hoBias", DataType.Double ], [ "hoContrast", DataType.Double ],
+         [ "outputId", DataType.String ],
+         [ "createStars", DataType.Boolean ], [ "createCombined", DataType.Boolean ],
+         [ "createFactorImages", DataType.Boolean ], [ "applyAdjustments", DataType.Boolean ],
+         [ "createRatioMasks", DataType.Boolean ], [ "ratioThreshold", DataType.Double ],
+         [ "protectedSaturation", DataType.Boolean ], [ "saturationAmount", DataType.Double ],
+         [ "saturationBackground", DataType.Double ], [ "lightnessLift", DataType.Double ]
+      ];
    }
 
    /*
@@ -153,6 +202,19 @@ class ForaxxParameters
       for ( let [label, gain] of [ [ "SII", this.siiGain ], [ "Ha", this.haGain ], [ "OIII", this.oiiiGain ] ] )
          if ( !(gain > 0) || !isFinite( gain ) )
             return "The " + label + " gain must be a positive number.";
+      for ( let [label, m] of [ [ "SII", this.siiMidtone ], [ "Ha", this.haMidtone ], [ "OIII", this.oiiiMidtone ],
+                                [ "o mask bias", this.oBias ], [ "ho mask bias", this.hoBias ] ] )
+         if ( !(m > 0 && m < 1) )
+            return "The " + label + " midtone must be between 0 and 1 (0.5 is neutral).";
+      for ( let [label, c] of [ [ "o", this.oContrast ], [ "ho", this.hoContrast ] ] )
+         if ( !(c > 0) || !isFinite( c ) )
+            return "The " + label + " mask contrast must be a positive number.";
+      if ( !(this.ratioThreshold >= 0 && this.ratioThreshold < 1) )
+         return "The ratio mask threshold must be between 0 and 1.";
+      if ( !(this.saturationAmount >= 0) || !(this.saturationBackground >= 0 && this.saturationBackground < 1) )
+         return "Saturation amount must be 0 or more and the background threshold between 0 and 1.";
+      if ( !(this.lightnessLift > -0.5 && this.lightnessLift < 0.5) )
+         return "The lightness lift must be between -0.5 and 0.5.";
 
       let inputs = this.requiredInputs();
       let missing = inputs.filter( i => !isValidView( i[1] ) ).map( i => i[0] );
@@ -179,16 +241,8 @@ class ForaxxParameters
    {
       try
       {
-         Settings.write( SETTINGS_KEY + "/threeChannels", DataType.Boolean, this.threeChannels );
-         Settings.write( SETTINGS_KEY + "/palette", DataType.String, this.palette );
-         Settings.write( SETTINGS_KEY + "/siiGain", DataType.Double, this.siiGain );
-         Settings.write( SETTINGS_KEY + "/haGain", DataType.Double, this.haGain );
-         Settings.write( SETTINGS_KEY + "/oiiiGain", DataType.Double, this.oiiiGain );
-         Settings.write( SETTINGS_KEY + "/outputId", DataType.String, this.outputId );
-         Settings.write( SETTINGS_KEY + "/createStars", DataType.Boolean, this.createStars );
-         Settings.write( SETTINGS_KEY + "/createCombined", DataType.Boolean, this.createCombined );
-         Settings.write( SETTINGS_KEY + "/createFactorImages", DataType.Boolean, this.createFactorImages );
-         Settings.write( SETTINGS_KEY + "/applyAdjustments", DataType.Boolean, this.applyAdjustments );
+         for ( let [key, type] of ForaxxParameters.persisted )
+            Settings.write( SETTINGS_KEY + "/" + key, type, this[key] );
       }
       catch ( e )
       {
@@ -201,23 +255,14 @@ class ForaxxParameters
     */
    load()
    {
-      let read = ( key, type, current ) =>
-      {
-         let value = Settings.read( SETTINGS_KEY + "/" + key, type );
-         return Settings.lastReadOK ? value : current;
-      };
       try
       {
-         this.threeChannels = read( "threeChannels", DataType.Boolean, this.threeChannels );
-         this.palette = read( "palette", DataType.String, this.palette );
-         this.siiGain = read( "siiGain", DataType.Double, this.siiGain );
-         this.haGain = read( "haGain", DataType.Double, this.haGain );
-         this.oiiiGain = read( "oiiiGain", DataType.Double, this.oiiiGain );
-         this.outputId = read( "outputId", DataType.String, this.outputId );
-         this.createStars = read( "createStars", DataType.Boolean, this.createStars );
-         this.createCombined = read( "createCombined", DataType.Boolean, this.createCombined );
-         this.createFactorImages = read( "createFactorImages", DataType.Boolean, this.createFactorImages );
-         this.applyAdjustments = read( "applyAdjustments", DataType.Boolean, this.applyAdjustments );
+         for ( let [key, type] of ForaxxParameters.persisted )
+         {
+            let value = Settings.read( SETTINGS_KEY + "/" + key, type );
+            if ( Settings.lastReadOK )
+               this[key] = value;
+         }
       }
       catch ( e )
       {
@@ -259,6 +304,45 @@ const ForaxxExpressions = {
       return (gain == 1) ? id : `min(1, ${gain}*${id})`;
    },
 
+   // A midtones transfer; 0.5 is the identity
+   midtones( expr, m )
+   {
+      return (m == 0.5) ? expr : `mtf(${m}, ${expr})`;
+   },
+
+   // A channel after gain and midtone shaping
+   shaped( id, gain, midtone )
+   {
+      return ForaxxExpressions.midtones( ForaxxExpressions.scaled( id, gain ), midtone );
+   },
+
+   // A factor after bias (midtones) and contrast around 0.5, clipped to [0,1]
+   shapedFactor( expr, bias, contrast )
+   {
+      let e = ForaxxExpressions.midtones( expr, bias );
+      if ( contrast != 1 )
+         e = `max(0, min(1, (${e} - 0.5)*${contrast} + 0.5))`;
+      return e;
+   },
+
+   // Relative strength of a over a+b, faded to 0 where the mean of the listed
+   // channels is below threshold
+   ratio( a, b, channels, threshold )
+   {
+      let mean = `mean(${channels.join( ", " )})`;
+      return `(${a}/(${a} + ${b} + 1e-6)) * min(1, ${mean}/${threshold})`;
+   },
+
+   // Protected-saturation mask for an RGB image: L* above the background
+   // threshold, times one minus the current saturation
+   saturationMask( background )
+   {
+      let mx = "max($T[0], $T[1], $T[2])";
+      let mn = "min($T[0], $T[1], $T[2])";
+      let sat = `(${mx} - ${mn})/max(1e-6, ${mx})`;
+      return `max(0, (CIEL($T) - ${background})/(1 - ${background})) * (1 - ${sat})`;
+   },
+
    // Screen blend: ~(~a*~b)
    screen( a, b )
    {
@@ -275,13 +359,14 @@ const ForaxxExpressions = {
  *          the starless channels for the nebula image, the star channels for
  *          the stars image.
  */
-function paletteExpressions( palette, threeChannels, factors, sources )
+function paletteExpressions( palette, threeChannels, factors, sources, shaping = {} )
 {
    let X = ForaxxExpressions;
    if ( palette.dynamic )
    {
-      let ho = X.hoFactor( factors.h, factors.o );
-      let r = threeChannels ? X.blend( X.oFactor( factors.o ), sources.s, sources.h ) : sources.h;
+      let ho = X.shapedFactor( X.hoFactor( factors.h, factors.o ), shaping.hoBias ?? 0.5, shaping.hoContrast ?? 1 );
+      let o = X.shapedFactor( X.oFactor( factors.o ), shaping.oBias ?? 0.5, shaping.oContrast ?? 1 );
+      let r = threeChannels ? X.blend( o, sources.s, sources.h ) : sources.h;
       let g = X.blend( ho, sources.h, sources.o );
       let b = sources.o;
       return [ r, g, b ];
@@ -410,11 +495,50 @@ function applyStarAdjustments( view )
 }
 
 /*
+ * Boosts saturation on view through a generated mask (L* above the
+ * background threshold, times one minus the current saturation). The mask
+ * image is left open as maskId for reuse. Returns the mask view.
+ */
+function applyProtectedSaturation( view, maskId, amount, background )
+{
+   let mask = createImage( view, maskId, PixelMath.Gray, ForaxxExpressions.saturationMask( background ) );
+   let window = view.window;
+   window.mask = mask.window;
+   window.maskEnabled = true;
+   window.maskInverted = false;
+   try
+   {
+      let S = new ColorSaturation;
+      S.HS = [ [0.00000, amount], [0.50000, amount], [1.00000, amount] ];
+      S.HSt = ColorSaturation.AkimaSubsplines;
+      S.hueShift = 0.000;
+      S.executeOn( view );
+   }
+   finally
+   {
+      window.removeMask();
+   }
+   return mask;
+}
+
+/*
+ * Colour-preserving brightness: a curve on CIE L* only, through
+ * (0.5, 0.5 + lift).
+ */
+function applyLightnessLift( view, lift )
+{
+   let C = new CurvesTransformation;
+   C.L = [ [0.00000, 0.00000], [0.50000, 0.50000 + lift], [1.00000, 1.00000] ];
+   C.Lt = CurvesTransformation.AkimaSubsplines;
+   C.executeOn( view );
+}
+
+/*
  * Builds the palette image and, if requested, the stars and combined
  * images, from a validated ForaxxParameters object.
  *
  * Returns { foraxx: View, stars: View|null, combined: View|null,
- *           factors: Array of View }.
+ *           factors: Array of View, masks: Array of View }.
  */
 function buildForaxx( params )
 {
@@ -425,19 +549,23 @@ function buildForaxx( params )
    let palette = paletteById( params.palette );
    let X = ForaxxExpressions;
 
+   let suffixes = [ "_stars", "_combined", "_ratio_OIII", "_ratio_SII", "_satmask" ];
    let ids = {
       ho: uniqueViewId( "ho" ),
       o: uniqueViewId( "o" ),
-      result: uniqueViewId( params.outputId, [ "_stars", "_combined" ] )
+      result: uniqueViewId( params.outputId, suffixes )
    };
-   ids.stars = ids.result + "_stars";
-   ids.combined = ids.result + "_combined";
+   for ( let sfx of suffixes )
+      ids[sfx.substring( 1 )] = ids.result + sfx;
 
-   // Gain-scaled starless channels.
+   let shaping = { oBias: params.oBias, oContrast: params.oContrast,
+                   hoBias: params.hoBias, hoContrast: params.hoContrast };
+
+   // Starless channels after gain and midtone shaping.
    let nebula = {
-      s: params.threeChannels ? X.scaled( params.sii.id, params.siiGain ) : "",
-      h: X.scaled( params.ha.id, params.haGain ),
-      o: X.scaled( params.oiii.id, params.oiiiGain )
+      s: params.threeChannels ? X.shaped( params.sii.id, params.siiGain, params.siiMidtone ) : "",
+      h: X.shaped( params.ha.id, params.haGain, params.haMidtone ),
+      o: X.shaped( params.oiii.id, params.oiiiGain, params.oiiiMidtone )
    };
 
    console.writeln( "<end><cbr><br>" + TITLE + ": building " + palette.name + " from "
@@ -447,21 +575,48 @@ function buildForaxx( params )
    if ( palette.dynamic && params.createFactorImages )
    {
       console.writeln( "Creating the 'HO' dynamic PixelMath factor image: " + ids.ho );
-      factors.push( createImage( params.ha, ids.ho, PixelMath.Gray, X.hoFactor( nebula.h, nebula.o ) ) );
+      factors.push( createImage( params.ha, ids.ho, PixelMath.Gray,
+                                 X.shapedFactor( X.hoFactor( nebula.h, nebula.o ), shaping.hoBias, shaping.hoContrast ) ) );
       if ( params.threeChannels )
       {
          console.writeln( "Creating the 'O' dynamic PixelMath factor image: " + ids.o );
-         factors.push( createImage( params.ha, ids.o, PixelMath.Gray, X.oFactor( nebula.o ) ) );
+         factors.push( createImage( params.ha, ids.o, PixelMath.Gray,
+                                    X.shapedFactor( X.oFactor( nebula.o ), shaping.oBias, shaping.oContrast ) ) );
+      }
+   }
+
+   let masks = [];
+   if ( params.createRatioMasks )
+   {
+      let channels = params.threeChannels ? [ nebula.h, nebula.o, nebula.s ] : [ nebula.h, nebula.o ];
+      console.writeln( "Creating the OIII ratio mask: " + ids.ratio_OIII );
+      masks.push( createImage( params.ha, ids.ratio_OIII, PixelMath.Gray,
+                               X.ratio( nebula.o, nebula.h, channels, params.ratioThreshold ) ) );
+      if ( params.threeChannels )
+      {
+         console.writeln( "Creating the SII ratio mask: " + ids.ratio_SII );
+         masks.push( createImage( params.ha, ids.ratio_SII, PixelMath.Gray,
+                                  X.ratio( nebula.s, nebula.h, channels, params.ratioThreshold ) ) );
       }
    }
 
    console.writeln( "Creating the " + palette.id + " image: " + ids.result );
-   let [r, g, b] = paletteExpressions( palette, params.threeChannels, nebula, nebula );
+   let [r, g, b] = paletteExpressions( palette, params.threeChannels, nebula, nebula, shaping );
    let foraxx = createImage( params.ha, ids.result, PixelMath.RGB, r, g, b );
    if ( params.applyAdjustments )
    {
       console.writeln( "Applying curves and saturation adjustments ..." );
       applyForaxxAdjustments( foraxx );
+   }
+   if ( params.protectedSaturation && params.saturationAmount > 0 )
+   {
+      console.writeln( "Applying protected saturation through " + ids.satmask + " ..." );
+      masks.push( applyProtectedSaturation( foraxx, ids.satmask, params.saturationAmount, params.saturationBackground ) );
+   }
+   if ( params.lightnessLift != 0 )
+   {
+      console.writeln( "Applying the L* brightness curve ..." );
+      applyLightnessLift( foraxx, params.lightnessLift );
    }
 
    let stars = null;
@@ -473,7 +628,7 @@ function buildForaxx( params )
          o: params.oiiiStars.id
       };
       console.writeln( "Creating the stars image: " + ids.stars );
-      let [rs, gs, bs] = paletteExpressions( palette, params.threeChannels, nebula, starSources );
+      let [rs, gs, bs] = paletteExpressions( palette, params.threeChannels, nebula, starSources, shaping );
       stars = createImage( params.ha, ids.stars, PixelMath.RGB, rs, gs, bs );
       if ( params.applyAdjustments )
       {
@@ -491,5 +646,5 @@ function buildForaxx( params )
    }
 
    console.noteln( TITLE + ": done." );
-   return { foraxx, stars, combined, factors };
+   return { foraxx, stars, combined, factors, masks };
 }

@@ -20,6 +20,8 @@ class ForaxxDialog extends Dialog
 
       this.params = params;
       this.windowTitle = TITLE;
+      this.numericControls = [];
+      this.checkBoxes = [];
 
       let labelWidth = this.font.width( "Output identifier:" + "M" );
 
@@ -37,8 +39,10 @@ class ForaxxDialog extends Dialog
          + "<p>Choose two channels for Ha + OIII data (mono, or OSC with a dual "
          + "narrowband filter) or three channels for SII + Ha + OIII, pick a palette, "
          + "then select the starless image for each channel and, if you want a stars "
-         + "image, the matching stars image. Channel gains scale the starless images "
-         + "before combination.</p>"
+         + "image, the matching stars image. Gains and midtones shape each starless "
+         + "channel before combination; bias and contrast reshape the two Foraxx mixing "
+         + "masks; the extras generate ratio masks, a protected saturation boost and a "
+         + "colour-preserving L* curve.</p>"
          + "<p>Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. "
          + "Copyright &copy; 2026 Yann Ramin. All Rights Reserved.</p>";
 
@@ -108,6 +112,9 @@ class ForaxxDialog extends Dialog
       this.siiGain_Control = this.createGainControl( "SII gain:", "siiGain", labelWidth );
       this.haGain_Control = this.createGainControl( "Ha gain:", "haGain", labelWidth );
       this.oiiiGain_Control = this.createGainControl( "OIII gain:", "oiiiGain", labelWidth );
+      this.siiMidtone_Control = this.createMidtoneControl( "SII midtone:", "siiMidtone", labelWidth );
+      this.haMidtone_Control = this.createMidtoneControl( "Ha midtone:", "haMidtone", labelWidth );
+      this.oiiiMidtone_Control = this.createMidtoneControl( "OIII midtone:", "oiiiMidtone", labelWidth );
 
       this.outputId_Label = new Label( this );
       this.outputId_Label.text = "Output identifier:";
@@ -127,41 +134,83 @@ class ForaxxDialog extends Dialog
       this.outputId_Sizer.add( this.outputId_Label );
       this.outputId_Sizer.add( this.outputId_Edit, 100 );
 
-      this.stars_CheckBox = new CheckBox( this );
-      this.stars_CheckBox.text = "Also create a stars image";
-      this.stars_CheckBox.toolTip = "<p>Uncheck this if your images still have their stars, or if you do not want a stars image.</p>";
-      this.stars_CheckBox.onCheck = ( checked ) =>
-      {
-         this.params.createStars = checked;
-         this.updateControls();
-      };
+      this.stars_CheckBox = this.createCheckBox( "Also create a stars image", "createStars",
+         "<p>Uncheck this if your images still have their stars, or if you do not want a stars image.</p>",
+         () => this.updateControls() );
 
-      this.combined_CheckBox = new CheckBox( this );
-      this.combined_CheckBox.text = "Also create a combined image with the stars screened in";
-      this.combined_CheckBox.toolTip = "<p>Creates a third image, ~(~result*~stars), after the adjustments. "
-         + "Handy for a quick look; for the final image you will usually blend the stars yourself.</p>";
-      this.combined_CheckBox.onCheck = ( checked ) =>
-      {
-         this.params.createCombined = checked;
-      };
+      this.combined_CheckBox = this.createCheckBox( "Also create a combined image with the stars screened in", "createCombined",
+         "<p>Creates a third image, ~(~result*~stars), after the adjustments. "
+         + "Handy for a quick look; for the final image you will usually blend the stars yourself.</p>" );
 
-      this.factors_CheckBox = new CheckBox( this );
-      this.factors_CheckBox.text = "Create the dynamic factor images (o, ho)";
-      this.factors_CheckBox.toolTip = "<p>Shows the Foraxx factor images as separate grayscale images. They are informative only; "
-         + "the palette image does not depend on them.</p>";
-      this.factors_CheckBox.onCheck = ( checked ) =>
-      {
-         this.params.createFactorImages = checked;
-      };
+      this.factors_CheckBox = this.createCheckBox( "Create the dynamic factor images (o, ho)", "createFactorImages",
+         "<p>Shows the Foraxx factor images as separate grayscale images, after bias and contrast. They are informative only; "
+         + "the palette image does not depend on them.</p>" );
 
-      this.adjustments_CheckBox = new CheckBox( this );
-      this.adjustments_CheckBox.text = "Apply the standard curves and saturation adjustments";
-      this.adjustments_CheckBox.toolTip = "<p>Applies the Foraxx curves and selective saturation boost to the palette image, and a curve "
-         + "to the stars image. Uncheck this to get the raw PixelMath output and do your own adjustments.</p>";
-      this.adjustments_CheckBox.onCheck = ( checked ) =>
-      {
-         this.params.applyAdjustments = checked;
-      };
+      this.adjustments_CheckBox = this.createCheckBox( "Apply the standard curves and saturation adjustments", "applyAdjustments",
+         "<p>Applies the Foraxx hue and saturation curves to the palette image, and a hue curve "
+         + "to the stars image. Uncheck this to get the raw PixelMath output and do your own adjustments.</p>" );
+
+      // ---- Mask shaping group ----------------------------------------------
+
+      this.oBias_Control = this.createNumericControl( "o bias:", "oBias", labelWidth, 0.05, 0.95, 3,
+         "<p>Midtones balance of the o = OIII^~OIII factor, which decides where SII replaces Ha in red. "
+         + "0.5 is neutral. Lower values brighten the mask, so SII wins over more of the image; higher values favour Ha.</p>" );
+      this.oContrast_Control = this.createNumericControl( "o contrast:", "oContrast", labelWidth, 0.25, 4.0, 2,
+         "<p>Steepens the o factor around 0.5, sharpening the transition between SII and Ha in red. 1 is neutral.</p>" );
+      this.hoBias_Control = this.createNumericControl( "ho bias:", "hoBias", labelWidth, 0.05, 0.95, 3,
+         "<p>Midtones balance of the ho = (Ha*OIII)^~(Ha*OIII) factor, which decides where Ha replaces OIII in green. "
+         + "0.5 is neutral. Lower values brighten the mask, so Ha wins over more of the image; higher values favour OIII.</p>" );
+      this.hoContrast_Control = this.createNumericControl( "ho contrast:", "hoContrast", labelWidth, 0.25, 4.0, 2,
+         "<p>Steepens the ho factor around 0.5, sharpening the transition between Ha and OIII in green. 1 is neutral.</p>" );
+
+      this.masks_Sizer = new VerticalSizer;
+      this.masks_Sizer.margin = 6;
+      this.masks_Sizer.spacing = 4;
+      this.masks_Sizer.add( this.oBias_Control );
+      this.masks_Sizer.add( this.oContrast_Control );
+      this.masks_Sizer.add( this.hoBias_Control );
+      this.masks_Sizer.add( this.hoContrast_Control );
+
+      this.masks_GroupBox = new GroupBox( this );
+      this.masks_GroupBox.title = "Foraxx Mask Shaping";
+      this.masks_GroupBox.sizer = this.masks_Sizer;
+
+      // ---- Extras group ----------------------------------------------------
+
+      this.ratio_CheckBox = this.createCheckBox( "Create channel-ratio masks (OIII and SII relative strength)", "createRatioMasks",
+         "<p>Creates OIII/(Ha+OIII) and, with three channels, SII/(Ha+SII) as grayscale images named "
+         + "&lt;result&gt;_ratio_OIII and _ratio_SII, for use as masks on your own adjustments. "
+         + "They select oxygen- or sulfur-rich structure regardless of brightness, and fade out below the threshold.</p>",
+         () => this.updateControls() );
+      this.ratioThreshold_Control = this.createNumericControl( "Ratio threshold:", "ratioThreshold", labelWidth, 0.0, 0.5, 3,
+         "<p>Mean signal below which the ratio masks fade to black, so faint, unstable ratios do not select the background.</p>" );
+
+      this.protectedSaturation_CheckBox = this.createCheckBox( "Protected saturation boost", "protectedSaturation",
+         "<p>Boosts colour saturation through a generated mask that excludes the dark background and pixels that "
+         + "are already saturated. The mask is left open as &lt;result&gt;_satmask.</p>",
+         () => this.updateControls() );
+      this.saturationAmount_Control = this.createNumericControl( "Saturation:", "saturationAmount", labelWidth, 0.0, 1.0, 2,
+         "<p>Saturation increase, as ColorSaturation understands it: 0.25 raises saturation by about a quarter where the mask is white.</p>" );
+      this.saturationBackground_Control = this.createNumericControl( "Background L*:", "saturationBackground", labelWidth, 0.0, 0.5, 3,
+         "<p>CIE L* lightness below which pixels are protected from the saturation boost.</p>" );
+
+      this.lightnessLift_Control = this.createNumericControl( "L* lift:", "lightnessLift", labelWidth, -0.3, 0.3, 3,
+         "<p>Colour-preserving brightness: a curve on the CIE L* channel only, through (0.5, 0.5 + lift). "
+         + "0 is neutral. Chroma and hue are left alone, so colours keep their relationships as the image brightens.</p>" );
+
+      this.extras_Sizer = new VerticalSizer;
+      this.extras_Sizer.margin = 6;
+      this.extras_Sizer.spacing = 4;
+      this.extras_Sizer.add( this.ratio_CheckBox );
+      this.extras_Sizer.add( this.ratioThreshold_Control );
+      this.extras_Sizer.add( this.protectedSaturation_CheckBox );
+      this.extras_Sizer.add( this.saturationAmount_Control );
+      this.extras_Sizer.add( this.saturationBackground_Control );
+      this.extras_Sizer.add( this.lightnessLift_Control );
+
+      this.extras_GroupBox = new GroupBox( this );
+      this.extras_GroupBox.title = "Masks and Colour";
+      this.extras_GroupBox.sizer = this.extras_Sizer;
 
       this.options_Sizer = new VerticalSizer;
       this.options_Sizer.margin = 6;
@@ -171,6 +220,9 @@ class ForaxxDialog extends Dialog
       this.options_Sizer.add( this.siiGain_Control );
       this.options_Sizer.add( this.haGain_Control );
       this.options_Sizer.add( this.oiiiGain_Control );
+      this.options_Sizer.add( this.siiMidtone_Control );
+      this.options_Sizer.add( this.haMidtone_Control );
+      this.options_Sizer.add( this.oiiiMidtone_Control );
       this.options_Sizer.add( this.outputId_Sizer );
       this.options_Sizer.add( this.stars_CheckBox );
       this.options_Sizer.add( this.combined_CheckBox );
@@ -253,16 +305,32 @@ class ForaxxDialog extends Dialog
 
       // ---- Layout ----------------------------------------------------------
 
+      this.left_Sizer = new VerticalSizer;
+      this.left_Sizer.spacing = 8;
+      this.left_Sizer.add( this.options_GroupBox );
+      this.left_Sizer.addStretch();
+
+      this.right_Sizer = new VerticalSizer;
+      this.right_Sizer.spacing = 8;
+      this.right_Sizer.add( this.masks_GroupBox );
+      this.right_Sizer.add( this.extras_GroupBox );
+      this.right_Sizer.addStretch();
+
+      this.columns_Sizer = new HorizontalSizer;
+      this.columns_Sizer.spacing = 8;
+      this.columns_Sizer.add( this.left_Sizer, 50 );
+      this.columns_Sizer.add( this.right_Sizer, 50 );
+
       this.sizer = new VerticalSizer;
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.info_Label );
-      this.sizer.add( this.options_GroupBox );
       this.sizer.add( this.views_GroupBox );
+      this.sizer.add( this.columns_Sizer );
       this.sizer.add( this.buttons_Sizer );
 
       this.userResizable = true;
-      this.setScaledMinWidth( 760 );
+      this.setScaledMinWidth( 980 );
 
       this.loadFromParameters();
 
@@ -271,25 +339,64 @@ class ForaxxDialog extends Dialog
    }
 
    /*
-    * A gain control for one channel. key is the ForaxxParameters property.
+    * A numeric control bound to a ForaxxParameters property.
     */
-   createGainControl( text, key, labelWidth )
+   createNumericControl( text, key, labelWidth, lower, upper, precision, toolTip )
    {
       let control = new NumericControl( this );
       control.label.text = text;
       control.label.setFixedWidth( labelWidth );
-      control.setRange( 0.1, 3.0 );
-      control.slider.setRange( 0, 290 );
-      control.slider.setScaledMinWidth( 200 );
-      control.setPrecision( 2 );
-      control.toolTip = "<p>Multiplies the starless " + text.replace( " gain:", "" )
-         + " image before combination (clipped at 1). Values above 1 push that channel forward in the palette; "
-         + "with the Foraxx palette this also shifts the dynamic factors. Star images are not scaled.</p>";
+      control.setRange( lower, upper );
+      control.slider.setRange( 0, Math.round( (upper - lower)*Math.pow( 10, precision ) ) );
+      control.slider.setScaledMinWidth( 160 );
+      control.setPrecision( precision );
+      control.toolTip = toolTip;
       control.onValueUpdated = ( value ) =>
       {
          this.params[key] = value;
       };
+      this.numericControls.push( [ control, key ] );
       return control;
+   }
+
+   /*
+    * A check box bound to a boolean ForaxxParameters property.
+    */
+   createCheckBox( text, key, toolTip, onChange = null )
+   {
+      let box = new CheckBox( this );
+      box.text = text;
+      box.toolTip = toolTip;
+      box.onCheck = ( checked ) =>
+      {
+         this.params[key] = checked;
+         if ( onChange )
+            onChange();
+      };
+      this.checkBoxes.push( [ box, key ] );
+      return box;
+   }
+
+   /*
+    * A gain control for one channel. key is the ForaxxParameters property.
+    */
+   createGainControl( text, key, labelWidth )
+   {
+      return this.createNumericControl( text, key, labelWidth, 0.1, 3.0, 2,
+         "<p>Multiplies the starless " + text.replace( " gain:", "" )
+         + " image before combination (clipped at 1). Values above 1 push that channel forward in the palette; "
+         + "with the Foraxx palette this also shifts the dynamic factors. Star images are not scaled.</p>" );
+   }
+
+   /*
+    * A midtone control for one channel: a midtones transfer after the gain.
+    */
+   createMidtoneControl( text, key, labelWidth )
+   {
+      return this.createNumericControl( text, key, labelWidth, 0.05, 0.95, 3,
+         "<p>Midtones balance applied to the starless " + text.replace( " midtone:", "" )
+         + " image after the gain. 0.5 is neutral; lower values lift faint signal without pushing "
+         + "highlights into clipping, higher values darken it.</p>" );
    }
 
    /*
@@ -362,14 +469,11 @@ class ForaxxDialog extends Dialog
       let p = this.params;
       this.twoChannels_RadioButton.checked = !p.threeChannels;
       this.threeChannels_RadioButton.checked = p.threeChannels;
-      this.siiGain_Control.setValue( p.siiGain );
-      this.haGain_Control.setValue( p.haGain );
-      this.oiiiGain_Control.setValue( p.oiiiGain );
       this.outputId_Edit.text = p.outputId;
-      this.stars_CheckBox.checked = p.createStars;
-      this.combined_CheckBox.checked = p.createCombined;
-      this.factors_CheckBox.checked = p.createFactorImages;
-      this.adjustments_CheckBox.checked = p.applyAdjustments;
+      for ( let [control, key] of this.numericControls )
+         control.setValue( p[key] );
+      for ( let [box, key] of this.checkBoxes )
+         box.checked = p[key];
       this.updateControls();
    }
 
@@ -385,8 +489,15 @@ class ForaxxDialog extends Dialog
       let dynamic = paletteById( this.params.palette ).dynamic == true;
 
       this.siiGain_Control.enabled = three;
+      this.siiMidtone_Control.enabled = three;
       this.combined_CheckBox.enabled = stars;
       this.factors_CheckBox.enabled = dynamic;
+      this.masks_GroupBox.enabled = dynamic;
+      this.oBias_Control.enabled = dynamic && three;
+      this.oContrast_Control.enabled = dynamic && three;
+      this.ratioThreshold_Control.enabled = this.params.createRatioMasks;
+      this.saturationAmount_Control.enabled = this.params.protectedSaturation;
+      this.saturationBackground_Control.enabled = this.params.protectedSaturation;
 
       this.sii_Row.label.enabled = three;
       this.sii_Row.viewList.enabled = three;

@@ -471,12 +471,172 @@ function run()
       check( d.threeChannels_RadioButton.checked && d.outputId_Edit.text == "Foraxx" && d.stars_CheckBox.checked && d.sii_Row.viewList.enabled, "dialog: reset refreshes the controls" );
       check( p.validate().indexOf( "select an image" ) >= 0, "dialog: parameters still validate after reset" );
 
+      d.oBias_Control.onValueUpdated( 0.3 );
+      d.ratio_CheckBox.onCheck( true );
+      d.protectedSaturation_CheckBox.onCheck( true );
+      d.lightnessLift_Control.onValueUpdated( -0.1 );
+      check( near( p.oBias, 0.3 ) && p.createRatioMasks === true && p.protectedSaturation === true && near( p.lightnessLift, -0.1 ),
+             "dialog: new controls update the parameters" );
+      check( d.ratioThreshold_Control.enabled && d.saturationAmount_Control.enabled, "dialog: dependent controls follow their check boxes" );
+      d.twoChannels_RadioButton.onCheck( true );
+      check( !d.oBias_Control.enabled && d.hoBias_Control.enabled && !d.siiMidtone_Control.enabled, "dialog: two channels disables the o mask and SII shaping" );
+      d.palette_ComboBox.onItemSelected( 1 );
+      check( !d.masks_GroupBox.enabled, "dialog: static palette disables mask shaping" );
+      d.reset_ToolButton.onClick();
+      check( near( p.oBias, 0.5 ) && p.createRatioMasks === false && near( d.oBias_Control.value, 0.5 ) && !d.ratio_CheckBox.checked, "dialog: reset clears the new options" );
+
       // Loaded settings must show up in the controls.
       let q = new ForaxxParameters;
       q.threeChannels = false; q.palette = "HOO"; q.outputId = "Loaded"; q.oiiiGain = 2.25; q.createFactorImages = false;
       let e = new ForaxxDialog( q );
       check( e.twoChannels_RadioButton.checked && e.palette_ComboBox.currentItem == 1 && e.outputId_Edit.text == "Loaded"
              && near( e.oiiiGain_Control.value, 2.25 ) && !e.factors_CheckBox.checked, "dialog: constructed from loaded parameters" );
+   }
+
+   // ---- Mode K: mask bias/contrast and channel midtones -----------------
+
+   const mtf = ( m, x ) => (x <= 0) ? 0 : (x >= 1) ? 1 : ((m - 1)*x)/((2*m - 1)*x - m);
+   const shapeF = ( f, bias, c ) => F.clamp( (mtf( bias, f ) - 0.5)*c + 0.5 );
+
+   {
+      let p = new ForaxxParameters;
+      p.applyAdjustments = false;
+      p.createStars = false;
+      p.outputId = "Shape";
+      p.oBias = 0.3; p.oContrast = 2.0; p.hoBias = 0.6; p.hoContrast = 1.5;
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      let oS = ( x, y ) => shapeF( F.o( src.oiii( x, y ) ), 0.3, 2.0 );
+      let hoS = ( x, y ) => shapeF( F.ho( src.ha( x, y ), src.oiii( x, y ) ), 0.6, 1.5 );
+      checkGray( r.factors[0], "K: ho factor image after bias/contrast", hoS );
+      checkGray( r.factors[1], "K: o factor image after bias/contrast", oS );
+      checkRGB( r.foraxx, "K: Shape uses the reshaped factors", ( x, y ) =>
+      {
+         let Ha = src.ha( x, y ), O = src.oiii( x, y ), S = src.sii( x, y );
+         return [ F.clamp( F.blend( oS( x, y ), S, Ha ) ), F.clamp( F.blend( hoS( x, y ), Ha, O ) ), O ];
+      } );
+   }
+
+   {
+      let p = new ForaxxParameters;
+      p.threeChannels = false;
+      p.applyAdjustments = false;
+      p.createStars = false;
+      p.createFactorImages = false;
+      p.outputId = "Mid";
+      p.haMidtone = 0.3; p.oiiiMidtone = 0.7; p.oiiiGain = 1.2;
+      p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      checkRGB( r.foraxx, "K: Mid applies gain then midtones per channel", ( x, y ) =>
+      {
+         let Ha = mtf( 0.3, src.ha( x, y ) ), O = mtf( 0.7, Math.min( 1, 1.2*src.oiii( x, y ) ) );
+         return [ Ha, F.clamp( F.blend( F.ho( Ha, O ), Ha, O ) ), O ];
+      } );
+   }
+
+   // ---- Mode L: channel-ratio masks --------------------------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.applyAdjustments = false;
+      p.createStars = false;
+      p.createFactorImages = false;
+      p.createRatioMasks = true;
+      p.ratioThreshold = 0.2;
+      p.outputId = "Ratio";
+      p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
+
+      let r = buildForaxx( p );
+      check( r.masks.length == 2 && r.masks[0].id == "Ratio_ratio_OIII" && r.masks[1].id == "Ratio_ratio_SII", "L: ratio mask ids" );
+      let fade = ( x, y ) => Math.min( 1, (src.ha( x, y ) + src.oiii( x, y ) + src.sii( x, y ))/3/0.2 );
+      checkGray( r.masks[0], "L: OIII ratio mask", ( x, y ) => F.clamp( src.oiii( x, y )/(src.oiii( x, y ) + src.ha( x, y ) + 1e-6)*fade( x, y ) ) );
+      checkGray( r.masks[1], "L: SII ratio mask", ( x, y ) => F.clamp( src.sii( x, y )/(src.sii( x, y ) + src.ha( x, y ) + 1e-6)*fade( x, y ) ) );
+
+      p.threeChannels = false;
+      p.outputId = "Ratio2";
+      let r2 = buildForaxx( p );
+      check( r2.masks.length == 1 && r2.masks[0].id == "Ratio2_ratio_OIII", "L: two channels give only the OIII ratio mask" );
+   }
+
+   // ---- Mode M: protected saturation and the L* lift ---------------------
+
+   {
+      let base = () =>
+      {
+         let p = new ForaxxParameters;
+         p.threeChannels = false;
+         p.applyAdjustments = false;
+         p.createStars = false;
+         p.createFactorImages = false;
+         p.ha = views.ha; p.oiii = views.oiii;
+         return p;
+      };
+      let raw = base(); raw.outputId = "SatRaw";
+      let rawView = buildForaxx( raw ).foraxx;
+
+      let p = base(); p.outputId = "Sat";
+      p.protectedSaturation = true; p.saturationAmount = 0.3; p.saturationBackground = 0.2;
+      let r = buildForaxx( p );
+      check( r.masks.length == 1 && r.masks[0].id == "Sat_satmask", "M: saturation mask image is left open" );
+      check( View.viewById( "Sat" ).window.mask.isNull, "M: image mask removed after the boost" );
+
+      // L* as PixelMath computes it for this image's working space.
+      let L = createImage( rawView, "SatRaw_L", PixelMath.Gray, "CIEL($T)" );
+      let mask = r.masks[0].image, Li = L.image, rawI = rawView.image, satI = r.foraxx.image;
+      let sat = ( img, x, y ) => { let a = [0, 1, 2].map( c => img.sample( x, y, c ) ); let mx = Math.max( ...a ), mn = Math.min( ...a ); return (mx - mn)/Math.max( 1e-6, mx ); };
+      let okMask = true, okProtected = true, okBoost = true, boosted = 0;
+      for ( let y = 0; y < H; y += 3 )
+         for ( let x = 0; x < W; x += 4 )
+         {
+            let l = Li.sample( x, y, 0 ), m = mask.sample( x, y, 0 );
+            let want = Math.max( 0, (l - 0.2)/(1 - 0.2) )*(1 - sat( rawI, x, y ));
+            if ( Math.abs( m - want ) > 1e-4 ) okMask = false;
+            if ( m < 1e-6 )
+            {
+               for ( let c = 0; c < 3; ++c )
+                  if ( !near( rawI.sample( x, y, c ), satI.sample( x, y, c ) ) ) okProtected = false;
+            }
+            else if ( m > 0.3 )
+            {
+               ++boosted;
+               if ( sat( satI, x, y ) < sat( rawI, x, y ) - 1e-5 ) okBoost = false;
+            }
+         }
+      check( okMask, "M: saturation mask = (L* - bg)/(1 - bg) * (1 - saturation)" );
+      check( okProtected, "M: pixels under a black mask are unchanged" );
+      check( boosted > 0 && okBoost, "M: saturation does not drop where the mask is open (" + boosted + " samples)" );
+      checkInRange( r.foraxx, "M: Sat" );
+
+      let q = base(); q.outputId = "Lift"; q.lightnessLift = 0.15;
+      let lifted = buildForaxx( q ).foraxx.image;
+      let sumRaw = 0, sumLift = 0;
+      for ( let [x, y] of samplePoints )
+         for ( let c = 0; c < 3; ++c ) { sumRaw += rawI.sample( x, y, c ); sumLift += lifted.sample( x, y, c ); }
+      check( sumLift > sumRaw, "M: L* lift brightens the image" );
+      checkInRange( View.viewById( "Lift" ), "M: Lift" );
+   }
+
+   // ---- Settings and validation for the new options --------------------
+
+   {
+      let p = new ForaxxParameters;
+      p.oBias = 0.3; p.hoContrast = 1.75; p.haMidtone = 0.4; p.createRatioMasks = true; p.ratioThreshold = 0.12;
+      p.protectedSaturation = true; p.saturationAmount = 0.4; p.lightnessLift = 0.1;
+      p.save();
+      let q = new ForaxxParameters; q.load();
+      check( near( q.oBias, 0.3 ) && near( q.hoContrast, 1.75 ) && near( q.haMidtone, 0.4 ) && q.createRatioMasks === true
+             && near( q.ratioThreshold, 0.12 ) && q.protectedSaturation === true && near( q.saturationAmount, 0.4 ) && near( q.lightnessLift, 0.1 ),
+             "settings: new options round trip" );
+      for ( let [key] of ForaxxParameters.persisted )
+         Settings.remove( SETTINGS_KEY + "/" + key );
+
+      let v = new ForaxxParameters; v.threeChannels = false; v.createStars = false; v.ha = views.ha; v.oiii = views.oiii;
+      v.oBias = 1.2; check( v.validate().indexOf( "bias" ) >= 0, "validate: rejects a bias outside (0,1)" ); v.oBias = 0.5;
+      v.lightnessLift = 0.9; check( v.validate().indexOf( "lightness" ) >= 0, "validate: rejects a lift outside (-0.5,0.5)" ); v.lightnessLift = 0;
+      v.hoContrast = 0; check( v.validate().indexOf( "contrast" ) >= 0, "validate: rejects a zero contrast" ); v.hoContrast = 1;
+      check( v.validate() == "", "validate: accepts neutral shaping" );
    }
 
    // ---- Error path: buildForaxx refuses an incomplete selection --------

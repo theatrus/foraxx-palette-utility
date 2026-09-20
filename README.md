@@ -44,6 +44,24 @@ original utility.
 - **Factor images.** Show the `o` and `ho` factor images (Foraxx only). They
   are informative; the result does not depend on them.
 - **Standard adjustments.** Uncheck to get the raw PixelMath output.
+- **Channel midtones.** A midtones transfer per starless channel after the
+  gain. 0.5 is neutral; lower lifts faint signal without pushing highlights
+  into clipping, which a plain gain does.
+- **Mask bias and contrast.** Reshape the two Foraxx mixing masks. Bias is a
+  midtones balance on `o` (where SII replaces Ha in red) and on `ho` (where
+  Ha replaces OIII in green); contrast steepens each around 0.5. Neutral
+  values reproduce the original palette exactly. The factor images show the
+  reshaped masks.
+- **Channel-ratio masks.** Optional grayscale images `OIII/(Ha+OIII)` and
+  `SII/(Ha+SII)`, named `<result>_ratio_OIII` and `_ratio_SII`, faded out
+  below a mean-signal threshold so faint, unstable ratios do not select the
+  background. Use them as masks on your own adjustments.
+- **Protected saturation.** A saturation boost through a generated mask,
+  `(L* - background)/(1 - background) * (1 - saturation)`, so the dark
+  background and already saturated pixels are left alone. The mask stays
+  open as `<result>_satmask`.
+- **L\* lift.** Colour-preserving brightness: a curve on the CIE L* channel
+  only, PixInsight's equivalent of a Luminosity-mode curve.
 - Options are remembered between runs. The reset button restores defaults.
 
 ## Install

@@ -27,6 +27,10 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.2.0   2026-09-20 Mask bias and contrast for the Foraxx factors,
+ *                    per-channel midtone shaping, channel-ratio masks,
+ *                    protected saturation, and a colour-preserving L*
+ *                    brightness curve.
  * 2.1.0   2026-09-20 Moves to the PSF Guard Scripts menu with an icon;
  *                    Yann Ramin added to the copyright.
  * 2.0.0   2026-09-19 Rewritten for the PixInsight 1.9.4 V8 JavaScript
@@ -56,7 +60,7 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"
