@@ -1,5 +1,9 @@
 # Foraxx Palette Utility for PixInsight 1.9.4+
 
+A theatr.us tool. Also available for Photoshop as
+[foraxx-photoshop](https://github.com/theatrus/foraxx-photoshop), and built into
+[Seiza](https://github.com/theatrus/seiza) stacking.
+
 A PixInsight script that builds a Foraxx palette image (or a plain SHO, HOO,
 HSO or OHS mapping) from stretched, starless narrowband images, plus an
 optional colour stars image from the matching stretched star images.
@@ -68,7 +72,7 @@ original utility.
 
 ### From the update repository
 
-Add `https://pixinsight.psf-guard.com/` under Resources > Updates > Manage
+Add `https://pixinsight.theatr.us/` under Resources > Updates > Manage
 Repositories, then check for updates. That repository
 ([theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository))
 serves this version to PixInsight 1.9.4 and later 1.9.x, and the legacy 1.16
@@ -79,7 +83,7 @@ package to 1.8.9-3 through 1.9.3. The original publisher's URL,
 
 Copy `src/scripts/ForaxxPalette` and `rsc/icons/script/ForaxxPalette` into
 the matching directories of your PixInsight install, then run Script >
-Feature Scripts and add it. It appears under Script > PSF Guard Scripts >
+Feature Scripts and add it. It appears under Script > theatr.us >
 Foraxx Palette Utility.
 
 ## Layout
