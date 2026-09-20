@@ -1,6 +1,7 @@
 # Foraxx Palette Utility for PixInsight 1.9.4+
 
-A theatr.us tool. Also available for Photoshop as
+A theatr.us tool; the guide is at
+<https://theatr.us/software/astro/foraxx>. Also available for Photoshop as
 [foraxx-photoshop](https://github.com/theatrus/foraxx-photoshop), and built into
 [Seiza](https://github.com/theatrus/seiza) stacking.
 
