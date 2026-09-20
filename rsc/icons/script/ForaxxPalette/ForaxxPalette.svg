@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 128 128" role="img" aria-label="Foraxx Palette Utility">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="sii" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#d98c1f"/>
+    </radialGradient>
+    <radialGradient id="ha" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff8a5b"/>
+      <stop offset="1" stop-color="#c2410c"/>
+    </radialGradient>
+    <radialGradient id="oiii" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#7ef0e2"/>
+      <stop offset="1" stop-color="#0e9aa7"/>
+    </radialGradient>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#fff4d6"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Tile -->
+  <rect x="6" y="6" width="116" height="116" rx="22" fill="#0b1120" stroke="url(#rim)" stroke-width="4"/>
+  <!-- Three narrowband channels, blended (SII gold, Ha bronze, OIII teal) -->
+  <g opacity="0.85">
+    <circle cx="48" cy="52" r="30" fill="url(#sii)"/>
+    <circle cx="80" cy="52" r="30" fill="url(#ha)"/>
+    <circle cx="64" cy="80" r="30" fill="url(#oiii)"/>
+  </g>
+  <!-- A star at the blend point -->
+  <g fill="#fffaf0">
+    <path d="M64 38 L66 60 L64 64 L62 60 Z" opacity="0.95"/>
+    <path d="M64 90 L66 68 L64 64 L62 68 Z" opacity="0.95"/>
+    <path d="M38 64 L60 62 L64 64 L60 66 Z" opacity="0.95"/>
+    <path d="M90 64 L68 62 L64 64 L68 66 Z" opacity="0.95"/>
+  </g>
+  <circle cx="64" cy="64" r="8" fill="url(#core)"/>
+  <circle cx="64" cy="64" r="3.2" fill="#ffffff"/>
+</svg>

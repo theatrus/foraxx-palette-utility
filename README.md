@@ -59,9 +59,10 @@ package to 1.8.9-3 through 1.9.3. The original publisher's URL,
 
 ### By hand
 
-Copy `src/scripts/ForaxxPalette` into `src/scripts` of your PixInsight
-install, then run Script > Feature Scripts and add it. It appears under
-Script > Utilities > ForaxxPaletteUtility.
+Copy `src/scripts/ForaxxPalette` and `rsc/icons/script/ForaxxPalette` into
+the matching directories of your PixInsight install, then run Script >
+Feature Scripts and add it. It appears under Script > PSF Guard Scripts >
+Foraxx Palette Utility.
 
 ## Layout
 
@@ -69,6 +70,7 @@ Script > Utilities > ForaxxPaletteUtility.
 src/scripts/ForaxxPalette/ForaxxPalette.js       entry point, menu metadata
 src/scripts/ForaxxPalette/lib/ForaxxEngine.js    parameters, palettes, PixelMath, curves
 src/scripts/ForaxxPalette/lib/ForaxxDialog.js    the dialog
+rsc/icons/script/ForaxxPalette/ForaxxPalette.svg  the menu icon
 test/ForaxxTest.js                               headless test suite
 test/run-headless.sh                             runs the suite in PixInsight
 build.sh                                         builds the update package and updates.xri
@@ -134,6 +136,8 @@ Changes needed for the V8 runtime, following Pleiades' porting guide:
 
 ## License
 
-The original script is marked "All Rights Reserved" by Paul Hancock. This
-port is published with attribution as a derivative of that work and does not
-grant rights beyond those the original author allows.
+Copyright (c) 2023-2024 Paul Hancock (Paulyman Astro) for the original script.
+Copyright (c) 2026 Yann Ramin for the V8 rewrite and the palette tools. The
+original script is marked "All Rights Reserved"; this port is published with
+attribution as a derivative of that work and does not grant rights beyond
+those the original author allows.

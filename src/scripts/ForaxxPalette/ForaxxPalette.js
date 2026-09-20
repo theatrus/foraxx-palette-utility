@@ -3,8 +3,9 @@
  * Foraxx Palette Utility
  *
  * ForaxxPalette.js
- * Copyright (C) 2023-2024, Paul Hancock (Paulyman Astro)
- * Original script published at https://foraxxpaletteutility.com/
+ * Copyright (C) 2023-2024 Paul Hancock (Paulyman Astro), original script,
+ *                         published at https://foraxxpaletteutility.com/
+ * Copyright (C) 2026 Yann Ramin, V8 rewrite and palette tools
  *
  * Builds a Foraxx palette image from stretched, starless narrowband images,
  * plus an optional colour stars image from the matching stretched star
@@ -26,6 +27,8 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.1.0   2026-09-20 Moves to the PSF Guard Scripts menu with an icon;
+ *                    Yann Ramin added to the copyright.
  * 2.0.0   2026-09-19 Rewritten for the PixInsight 1.9.4 V8 JavaScript
  *                    runtime. Same Foraxx expressions and curves. Adds
  *                    static SHO/HOO/HSO/OHS palettes, channel gains, a
@@ -38,19 +41,22 @@
 
 #engine v8
 
-#feature-id    ForaxxPalette : Utilities > ForaxxPaletteUtility
+#feature-id    ForaxxPalette : PSF Guard Scripts > Foraxx Palette Utility
+
+#feature-icon  @script_icons_dir/ForaxxPalette.svg
 
 #feature-info  Builds a Foraxx (or SHO, HOO, HSO, OHS) palette image from stretched, \
                starless SII/Ha/OIII or Ha/OIII images, plus an optional colour \
                stars image.<br/>\
                <br/>\
                Original script by Paul Hancock, Paulyman Astro.<br/>\
-               Copyright &copy; 2023-2024 Paul Hancock.
+               Copyright &copy; 2023-2024 Paul Hancock. \
+               Copyright &copy; 2026 Yann Ramin.
 
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"

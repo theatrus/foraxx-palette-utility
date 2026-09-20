@@ -25,7 +25,7 @@ mkdir -p "$dist"
 # Package: the src/ tree only, no OS metadata files.
 (
    cd "$here"
-   zip -q -X -r "$dist/$zipname" src/scripts/ForaxxPalette \
+   zip -q -X -r "$dist/$zipname" src/scripts/ForaxxPalette rsc/icons/script/ForaxxPalette \
       -x '*.DS_Store' -x '__MACOSX/*' -x '*~'
 )
 cp "$here/legacy/$legacy" "$dist/$legacy"
@@ -59,7 +59,9 @@ cat > "$dist/updates.xri" <<XRI
                Same Foraxx expressions and curves as before.
             </p>
             <p>
-               Copyright (c) 2023-2024 Paul Hancock. All Rights Reserved.
+               Original script by Paul Hancock, Paulyman Astro.
+               Copyright (c) 2023-2024 Paul Hancock. Copyright (c) 2026 Yann Ramin.
+               All Rights Reserved.
             </p>
          </description>
       </package>

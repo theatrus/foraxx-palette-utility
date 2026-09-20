@@ -6,9 +6,9 @@
  *
  * The main dialog. Fills in a ForaxxParameters object (see ForaxxEngine.js).
  *
- * Copyright (C) 2023-2024 Paul Hancock, Paulyman Astro (original script,
- * published at https://foraxxpaletteutility.com/)
- * Ported to the PixInsight 1.9.4 V8 JavaScript runtime, 2026.
+ * Copyright (C) 2023-2024 Paul Hancock (Paulyman Astro), original script,
+ *                         published at https://foraxxpaletteutility.com/
+ * Copyright (C) 2026 Yann Ramin, V8 rewrite and palette tools
  ****************************************************************************
  */
 
@@ -39,7 +39,8 @@ class ForaxxDialog extends Dialog
          + "then select the starless image for each channel and, if you want a stars "
          + "image, the matching stars image. Channel gains scale the starless images "
          + "before combination.</p>"
-         + "<p>Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. All Rights Reserved.</p>";
+         + "<p>Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. "
+         + "Copyright &copy; 2026 Yann Ramin. All Rights Reserved.</p>";
 
       // ---- Options group ---------------------------------------------------
 
