@@ -69,6 +69,11 @@ original utility.
   open as `<result>_satmask`.
 - **L\* lift.** Colour-preserving brightness: a curve on the CIE L* channel
   only, PixInsight's equivalent of a Luminosity-mode curve.
+- **Live preview.** The dialog shows the result, rebuilt a moment after any
+  change: the real build runs on copies of the selected images downsampled
+  to 480 pixels in hidden windows, so the preview includes every option and
+  the standard adjustments, and it shows exactly what Run will produce. Turn
+  off Live and use Refresh on a slow machine.
 - Options are remembered between runs. The reset button restores defaults.
 
 ## Install

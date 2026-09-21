@@ -21,6 +21,52 @@
  ****************************************************************************
  */
 
+/*
+ * Shows a bitmap scaled to fit, or a message when there is none.
+ */
+class PreviewControl extends Control
+{
+   constructor( parent, width, height )
+   {
+      super( parent );
+      this.bitmap = null;
+      this.message = "Select the images to see a preview.";
+      this.setScaledFixedSize( width, height );
+      this.onPaint = ( x0, y0, x1, y1 ) =>
+      {
+         let g = new Graphics( this );
+         g.fillRect( 0, 0, this.width, this.height, new Brush( 0xff181818 ) );
+         if ( this.bitmap != null && this.bitmap.width > 0 && this.bitmap.height > 0 )
+         {
+            let s = Math.min( this.width/this.bitmap.width, this.height/this.bitmap.height );
+            let w = Math.max( 1, Math.round( this.bitmap.width*s ) );
+            let h = Math.max( 1, Math.round( this.bitmap.height*s ) );
+            let x = Math.floor( (this.width - w)/2 ), y = Math.floor( (this.height - h)/2 );
+            g.drawScaledBitmap( x, y, x + w, y + h, this.bitmap );
+         }
+         else
+         {
+            g.pen = new Pen( 0xff9a9a9a );
+            g.drawTextRect( 8, 8, this.width - 8, this.height - 8, this.message, TextAlignment.Center | TextAlignment.VertCenter );
+         }
+         g.end();
+      };
+   }
+
+   setBitmap( bitmap )
+   {
+      this.bitmap = bitmap;
+      this.repaint();
+   }
+
+   showMessage( text )
+   {
+      this.bitmap = null;
+      this.message = text;
+      this.repaint();
+   }
+}
+
 class ForaxxDialog extends Dialog
 {
    constructor( params )
@@ -31,6 +77,10 @@ class ForaxxDialog extends Dialog
       this.windowTitle = TITLE;
       this.numericControls = [];
       this.checkBoxes = [];
+      this.livePreview = true;
+      this.previewBusy = false;
+      this.previewTimer = new Timer( 0.35, false/*periodic*/ );
+      this.previewTimer.onTimeout = () => this.renderPreviewNow();
 
       let labelWidth = this.font.width( "Output identifier:" + "M" );
 
@@ -40,22 +90,11 @@ class ForaxxDialog extends Dialog
       this.info_Label.useRichText = true;
       this.info_Label.wordWrapping = true;
       this.info_Label.text =
-           "<p><b>" + TITLE + " v" + VERSION + "</b></p>"
-         + "<p>Builds a narrowband palette image from stretched, starless images, "
-         + "plus an optional colour stars image from the matching stretched star "
-         + "images. The Foraxx palette blends SII, Ha and OIII with dynamic PixelMath "
-         + "factors; the other palettes are plain channel mappings.</p>"
-         + "<p>Choose two channels for Ha + OIII data (mono, or OSC with a dual "
-         + "narrowband filter) or three channels for SII + Ha + OIII, pick a palette, "
-         + "then select the starless image for each channel and, if you want a stars "
-         + "image, the matching stars image. Gains and midtones shape each starless "
-         + "channel before combination; bias and contrast reshape the two Foraxx mixing "
-         + "masks; the extras generate ratio masks, a protected saturation boost and a "
-         + "colour-preserving L* curve.</p>"
-         + "<p>The Foraxx palette is The Coldest Nights' dynamic narrowband combination "
-         + "(thecoldestnights.com; the globe button opens the article). "
-         + "Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. "
-         + "Copyright &copy; 2026 Yann Ramin. All Rights Reserved.</p>";
+           "<p><b>" + TITLE + " v" + VERSION + "</b> &mdash; builds a narrowband palette from stretched, "
+         + "starless images, plus an optional stars image. The Foraxx palette is The Coldest Nights' dynamic "
+         + "combination (thecoldestnights.com; the globe button opens the article); the other palettes are plain "
+         + "channel mappings. Hover a control for details. The preview runs the full build on a small copy of "
+         + "the images, so it shows exactly what Run will produce.</p>";
 
       // ---- Options group ---------------------------------------------------
 
@@ -160,6 +199,49 @@ class ForaxxDialog extends Dialog
       this.adjustments_CheckBox = this.createCheckBox( "Apply the standard curves and saturation adjustments", "applyAdjustments",
          "<p>Applies the Foraxx hue and saturation curves to the palette image, and a hue curve "
          + "to the stars image. Uncheck this to get the raw PixelMath output and do your own adjustments.</p>" );
+
+      // ---- Preview -----------------------------------------------------------
+
+      this.preview_Control = new PreviewControl( this, 400, 250 );
+      this.preview_Control.toolTip = "<p>The result, built from copies of the selected images downsampled to 480 pixels, "
+         + "with every option applied. Adjustments and the combined image are included; the factor and ratio masks are not.</p>";
+
+      this.livePreview_CheckBox = new CheckBox( this );
+      this.livePreview_CheckBox.text = "Live";
+      this.livePreview_CheckBox.checked = true;
+      this.livePreview_CheckBox.toolTip = "<p>Rebuild the preview a moment after any change. Uncheck on a slow machine and use Refresh.</p>";
+      this.livePreview_CheckBox.onCheck = ( checked ) =>
+      {
+         this.livePreview = checked;
+         if ( checked )
+            this.schedulePreview();
+      };
+
+      this.refreshPreview_Button = new PushButton( this );
+      this.refreshPreview_Button.text = "Refresh";
+      this.refreshPreview_Button.icon = this.scaledResource( ":/icons/refresh.png" );
+      this.refreshPreview_Button.onClick = () => this.renderPreviewNow();
+
+      this.previewStatus_Label = new Label( this );
+      this.previewStatus_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
+      this.previewStatus_Label.text = "";
+
+      this.previewButtons_Sizer = new HorizontalSizer;
+      this.previewButtons_Sizer.spacing = 6;
+      this.previewButtons_Sizer.add( this.livePreview_CheckBox );
+      this.previewButtons_Sizer.add( this.refreshPreview_Button );
+      this.previewButtons_Sizer.addSpacing( 6 );
+      this.previewButtons_Sizer.add( this.previewStatus_Label, 100 );
+
+      this.preview_Sizer = new VerticalSizer;
+      this.preview_Sizer.margin = 6;
+      this.preview_Sizer.spacing = 4;
+      this.preview_Sizer.add( this.preview_Control );
+      this.preview_Sizer.add( this.previewButtons_Sizer );
+
+      this.preview_GroupBox = new GroupBox( this );
+      this.preview_GroupBox.title = "Preview";
+      this.preview_GroupBox.sizer = this.preview_Sizer;
 
       // ---- Mask shaping group ----------------------------------------------
 
@@ -323,6 +405,7 @@ class ForaxxDialog extends Dialog
 
       this.right_Sizer = new VerticalSizer;
       this.right_Sizer.spacing = 8;
+      this.right_Sizer.add( this.preview_GroupBox );
       this.right_Sizer.add( this.masks_GroupBox );
       this.right_Sizer.add( this.extras_GroupBox );
       this.right_Sizer.addStretch();
@@ -365,6 +448,7 @@ class ForaxxDialog extends Dialog
       control.onValueUpdated = ( value ) =>
       {
          this.params[key] = value;
+         this.schedulePreview();
       };
       this.numericControls.push( [ control, key ] );
       return control;
@@ -383,6 +467,7 @@ class ForaxxDialog extends Dialog
          this.params[key] = checked;
          if ( onChange )
             onChange();
+         this.schedulePreview();
       };
       this.checkBoxes.push( [ box, key ] );
       return box;
@@ -430,6 +515,7 @@ class ForaxxDialog extends Dialog
       row.viewList.onViewSelected = ( view ) =>
       {
          this.params[key] = isValidView( view ) ? view : null;
+         this.schedulePreview();
       };
 
       row.starsLabel = new Label( this );
@@ -443,6 +529,7 @@ class ForaxxDialog extends Dialog
       row.starsViewList.onViewSelected = ( view ) =>
       {
          this.params[key + "Stars"] = isValidView( view ) ? view : null;
+         this.schedulePreview();
       };
 
       row.sizer = new HorizontalSizer;
@@ -494,6 +581,7 @@ class ForaxxDialog extends Dialog
    updateControls()
    {
       this.updatePaletteList();
+      this.schedulePreview();
 
       let three = this.params.threeChannels;
       let stars = this.params.createStars;
@@ -519,6 +607,53 @@ class ForaxxDialog extends Dialog
       this.ha_Row.starsViewList.enabled = stars;
       this.oiii_Row.starsLabel.enabled = stars;
       this.oiii_Row.starsViewList.enabled = stars;
+   }
+
+   /*
+    * Rebuilds the preview shortly, coalescing bursts of slider updates.
+    */
+   schedulePreview()
+   {
+      if ( !this.livePreview || this.preview_Control === undefined )
+         return;
+      this.previewTimer.stop();
+      this.previewTimer.start();
+   }
+
+   /*
+    * Rebuilds the preview now. Returns true if a bitmap was produced.
+    */
+   renderPreviewNow()
+   {
+      this.previewTimer.stop();
+      if ( this.previewBusy )
+         return false;
+      let error = this.params.validate();
+      if ( error )
+      {
+         this.preview_Control.showMessage( error );
+         this.previewStatus_Label.text = "";
+         return false;
+      }
+      this.previewBusy = true;
+      try
+      {
+         let t = new ElapsedTime;
+         let r = renderPreview( this.params, 480 );
+         this.preview_Control.setBitmap( r.bitmap );
+         this.previewStatus_Label.text = format( "%dx%d at %.0f%%, %.2f s", r.width, r.height, 100*r.scale, t.value );
+         return true;
+      }
+      catch ( e )
+      {
+         this.preview_Control.showMessage( "Preview failed: " + e.message );
+         this.previewStatus_Label.text = "";
+         return false;
+      }
+      finally
+      {
+         this.previewBusy = false;
+      }
    }
 
    /*

@@ -387,7 +387,7 @@ function paletteExpressions( palette, threeChannels, factors, sources, shaping =
  * Runs PixelMath on targetView to create a new image with the given
  * identifier. For a grayscale image only r is used. Returns the new view.
  */
-function createImage( targetView, newImageId, colorSpace, r, g = "", b = "" )
+function createImage( targetView, newImageId, colorSpace, r, g = "", b = "", show = true )
 {
    let P = new PixelMath;
    P.expression = r;
@@ -409,7 +409,7 @@ function createImage( targetView, newImageId, colorSpace, r, g = "", b = "" )
    P.truncateLower = 0;
    P.truncateUpper = 1;
    P.createNewImage = true;
-   P.showNewImage = true;
+   P.showNewImage = show;
    P.newImageId = newImageId;
    P.newImageWidth = 0;
    P.newImageHeight = 0;
@@ -508,9 +508,9 @@ function applyStarAdjustments( view )
  * background threshold, times one minus the current saturation). The mask
  * image is left open as maskId for reuse. Returns the mask view.
  */
-function applyProtectedSaturation( view, maskId, amount, background )
+function applyProtectedSaturation( view, maskId, amount, background, show = true )
 {
-   let mask = createImage( view, maskId, PixelMath.Gray, ForaxxExpressions.saturationMask( background ) );
+   let mask = createImage( view, maskId, PixelMath.Gray, ForaxxExpressions.saturationMask( background ), "", "", show );
    let window = view.window;
    window.mask = mask.window;
    window.maskEnabled = true;
@@ -546,14 +546,18 @@ function applyLightnessLift( view, lift )
  * Builds the palette image and, if requested, the stars and combined
  * images, from a validated ForaxxParameters object.
  *
+ * options.show (default true): show the created image windows. The preview
+ * passes false and closes them itself.
+ *
  * Returns { foraxx: View, stars: View|null, combined: View|null,
  *           factors: Array of View, masks: Array of View }.
  */
-function buildForaxx( params )
+function buildForaxx( params, options = {} )
 {
    let error = params.validate();
    if ( error )
       throw new Error( error );
+   let show = options.show !== false;
 
    let palette = paletteById( params.palette );
    let X = ForaxxExpressions;
@@ -585,12 +589,12 @@ function buildForaxx( params )
    {
       console.writeln( "Creating the 'HO' dynamic PixelMath factor image: " + ids.ho );
       factors.push( createImage( params.ha, ids.ho, PixelMath.Gray,
-                                 X.shapedFactor( X.hoFactor( nebula.h, nebula.o ), shaping.hoBias, shaping.hoContrast ) ) );
+                                 X.shapedFactor( X.hoFactor( nebula.h, nebula.o ), shaping.hoBias, shaping.hoContrast ), "", "", show ) );
       if ( params.threeChannels )
       {
          console.writeln( "Creating the 'O' dynamic PixelMath factor image: " + ids.o );
          factors.push( createImage( params.ha, ids.o, PixelMath.Gray,
-                                    X.shapedFactor( X.oFactor( nebula.o ), shaping.oBias, shaping.oContrast ) ) );
+                                    X.shapedFactor( X.oFactor( nebula.o ), shaping.oBias, shaping.oContrast ), "", "", show ) );
       }
    }
 
@@ -600,18 +604,18 @@ function buildForaxx( params )
       let channels = params.threeChannels ? [ nebula.h, nebula.o, nebula.s ] : [ nebula.h, nebula.o ];
       console.writeln( "Creating the OIII ratio mask: " + ids.ratio_OIII );
       masks.push( createImage( params.ha, ids.ratio_OIII, PixelMath.Gray,
-                               X.ratio( nebula.o, nebula.h, channels, params.ratioThreshold ) ) );
+                               X.ratio( nebula.o, nebula.h, channels, params.ratioThreshold ), "", "", show ) );
       if ( params.threeChannels )
       {
          console.writeln( "Creating the SII ratio mask: " + ids.ratio_SII );
          masks.push( createImage( params.ha, ids.ratio_SII, PixelMath.Gray,
-                                  X.ratio( nebula.s, nebula.h, channels, params.ratioThreshold ) ) );
+                                  X.ratio( nebula.s, nebula.h, channels, params.ratioThreshold ), "", "", show ) );
       }
    }
 
    console.writeln( "Creating the " + palette.id + " image: " + ids.result );
    let [r, g, b] = paletteExpressions( palette, params.threeChannels, nebula, nebula, shaping );
-   let foraxx = createImage( params.ha, ids.result, PixelMath.RGB, r, g, b );
+   let foraxx = createImage( params.ha, ids.result, PixelMath.RGB, r, g, b, show );
    if ( params.applyAdjustments )
    {
       console.writeln( "Applying curves and saturation adjustments ..." );
@@ -620,7 +624,7 @@ function buildForaxx( params )
    if ( params.protectedSaturation && params.saturationAmount > 0 )
    {
       console.writeln( "Applying protected saturation through " + ids.satmask + " ..." );
-      masks.push( applyProtectedSaturation( foraxx, ids.satmask, params.saturationAmount, params.saturationBackground ) );
+      masks.push( applyProtectedSaturation( foraxx, ids.satmask, params.saturationAmount, params.saturationBackground, show ) );
    }
    if ( params.lightnessLift != 0 )
    {
@@ -638,7 +642,7 @@ function buildForaxx( params )
       };
       console.writeln( "Creating the stars image: " + ids.stars );
       let [rs, gs, bs] = paletteExpressions( palette, params.threeChannels, nebula, starSources, shaping );
-      stars = createImage( params.ha, ids.stars, PixelMath.RGB, rs, gs, bs );
+      stars = createImage( params.ha, ids.stars, PixelMath.RGB, rs, gs, bs, show );
       if ( params.applyAdjustments )
       {
          console.writeln( "Applying curves adjustments to the stars ..." );
@@ -651,9 +655,80 @@ function buildForaxx( params )
    {
       console.writeln( "Creating the combined image (stars screened in): " + ids.combined );
       let e = X.screen( ids.result, ids.stars );
-      combined = createImage( foraxx, ids.combined, PixelMath.RGB, e, e, e );
+      combined = createImage( foraxx, ids.combined, PixelMath.RGB, e, e, e, show );
    }
 
    console.noteln( TITLE + ": done." );
    return { foraxx, stars, combined, factors, masks };
+}
+
+/*
+ * Renders a preview of the result: the real build, run on downsampled
+ * copies of the selected images in hidden windows, returned as a Bitmap no
+ * larger than maxSize on its longest side. Every window it creates is
+ * closed before returning, so nothing is left in the workspace.
+ *
+ * Returns { bitmap: Bitmap, scale: Number, width: int, height: int }.
+ */
+function renderPreview( params, maxSize = 480 )
+{
+   let error = params.validate();
+   if ( error )
+      throw new Error( error );
+
+   let ref = params.ha.image;
+   let scale = Math.min( 1, maxSize/Math.max( ref.width, ref.height ) );
+   let created = [];   // temporary ImageWindows to close
+
+   let smallCopy = ( view, tag ) =>
+   {
+      let src = view.image;
+      let img = new Image( src );
+      if ( scale < 1 )
+         img.resample( scale );
+      let window = new ImageWindow( img.width, img.height, img.numberOfChannels, 32, true, img.isColor,
+                                    uniqueViewId( "fpv_" + tag ) );
+      created.push( window );
+      window.mainView.beginProcess( UndoFlag.NoSwapFile );
+      window.mainView.image.assign( img );
+      window.mainView.endProcess();
+      img.free();
+      return window.mainView;
+   };
+
+   let p = new ForaxxParameters;
+   try
+   {
+      for ( let [key, type] of ForaxxParameters.persisted )
+         p[key] = params[key];
+      p.createFactorImages = false;
+      p.createRatioMasks = false;
+      p.outputId = uniqueViewId( "fpv_result" );
+
+      p.ha = smallCopy( params.ha, "ha" );
+      p.oiii = smallCopy( params.oiii, "oiii" );
+      if ( params.threeChannels )
+         p.sii = smallCopy( params.sii, "sii" );
+      if ( params.createStars )
+      {
+         p.haStars = smallCopy( params.haStars, "ha_stars" );
+         p.oiiiStars = smallCopy( params.oiiiStars, "oiii_stars" );
+         if ( params.threeChannels )
+            p.siiStars = smallCopy( params.siiStars, "sii_stars" );
+      }
+
+      let r = buildForaxx( p, { show: false } );
+      for ( let v of [ r.foraxx, r.stars, r.combined ].concat( r.factors, r.masks ) )
+         if ( v != null )
+            created.push( v.window );
+
+      let shown = r.combined || r.foraxx;
+      let bitmap = shown.image.render( 1, false/*transparency*/, true/*fast*/ );
+      return { bitmap, scale, width: bitmap.width, height: bitmap.height };
+   }
+   finally
+   {
+      for ( let w of created )
+         try { w.forceClose(); } catch ( e ) {}
+   }
 }

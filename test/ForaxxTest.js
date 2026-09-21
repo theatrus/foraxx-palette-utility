@@ -433,6 +433,52 @@ function run()
       check( palettesFor( true ).length == 5, "palettesFor: five palettes with three channels" );
    }
 
+   // ---- Preview: the real build on hidden downsampled copies -------------
+
+   {
+      // Constant sources make the downsample exact, so the bitmap can be
+      // checked against the formula.
+      let cval = { sii: 0.30, ha: 0.60, oiii: 0.45, haStars: 0.20, oiiiStars: 0.70 };
+      let cviews = {};
+      for ( let k in cval )
+         cviews[k] = makeImage( "T_const_" + k, () => cval[k] );
+
+      let p = new ForaxxParameters;
+      p.applyAdjustments = false;
+      p.createStars = true;
+      p.createCombined = false;
+      p.sii = cviews.sii; p.ha = cviews.ha; p.oiii = cviews.oiii;
+      p.siiStars = cviews.sii; p.haStars = cviews.haStars; p.oiiiStars = cviews.oiiiStars;
+
+      let before = ImageWindow.windows.length;
+      let r = renderPreview( p, 32 );
+      check( ImageWindow.windows.length == before, "preview: no windows left behind (" + before + " before and after)" );
+      check( r.bitmap != null && r.width == 32 && r.height == 24 && near( r.scale, 0.5, 1e-6 ), "preview: bitmap 32x24 at 50% from 64x48 sources" );
+      let px = r.bitmap.pixel( 16, 12 );
+      let R = (px >> 16) & 0xff, G = (px >> 8) & 0xff, B = px & 0xff;
+      let o = F.o( cval.oiii ), ho = F.ho( cval.ha, cval.oiii );
+      let want = [ F.blend( o, cval.sii, cval.ha ), F.blend( ho, cval.ha, cval.oiii ), cval.oiii ].map( v => Math.round( 255*v ) );
+      check( Math.abs( R - want[0] ) <= 2 && Math.abs( G - want[1] ) <= 2 && Math.abs( B - want[2] ) <= 2,
+             "preview: pixel matches the formula (" + [R, G, B].join() + " vs " + want.join() + ")" );
+
+      p.applyAdjustments = true; p.createCombined = true; p.protectedSaturation = true; p.lightnessLift = 0.1;
+      let before2 = ImageWindow.windows.length;
+      let r2 = renderPreview( p, 32 );
+      check( r2.bitmap != null && ImageWindow.windows.length == before2, "preview: adjustments, combined and protected saturation render and clean up" );
+
+      p.threeChannels = false; p.createStars = false;
+      let r3 = renderPreview( p, 16 );
+      check( r3.width == 16 && r3.height == 12 && ImageWindow.windows.length == before2, "preview: two-channel, no stars, 16 px" );
+
+      let q = new ForaxxParameters;
+      let threw = false;
+      try { renderPreview( q, 32 ); } catch ( e ) { threw = e.message.indexOf( "select an image" ) >= 0; }
+      check( threw, "preview: refuses an incomplete selection" );
+
+      for ( let k in cviews )
+         cviews[k].window.forceClose();
+   }
+
    // ---- Dialog: construct it and drive its event handlers ---------------
 
    {
@@ -484,6 +530,28 @@ function run()
       check( !d.masks_GroupBox.enabled, "dialog: static palette disables mask shaping" );
       d.reset_ToolButton.onClick();
       check( near( p.oBias, 0.5 ) && p.createRatioMasks === false && near( d.oBias_Control.value, 0.5 ) && !d.ratio_CheckBox.checked, "dialog: reset clears the new options" );
+
+      // Preview through the dialog: schedule does nothing without inputs;
+      // renderPreviewNow reports a message, then a bitmap once images exist.
+      check( d.renderPreviewNow() === false && d.preview_Control.bitmap == null && d.preview_Control.message.indexOf( "select an image" ) >= 0,
+             "dialog: preview asks for images when the selection is incomplete" );
+      d.twoChannels_RadioButton.onCheck( true );
+      d.stars_CheckBox.onCheck( false );
+      d.ha_Row.viewList.onViewSelected( views.ha );
+      d.oiii_Row.viewList.onViewSelected( views.oiii );
+      let wins = ImageWindow.windows.length;
+      let okPreview = d.renderPreviewNow();
+      check( okPreview === true && d.preview_Control.bitmap != null && d.previewStatus_Label.text.indexOf( " at " ) > 0
+             && ImageWindow.windows.length == wins, "dialog: preview renders a bitmap and leaves no windows (status: " + d.previewStatus_Label.text
+             + "; message: " + d.preview_Control.message + "; windows " + wins + " -> " + ImageWindow.windows.length + ")" );
+      d.livePreview_CheckBox.onCheck( false );
+      d.schedulePreview();
+      check( !d.previewTimer.isRunning, "dialog: live preview off stops scheduling" );
+      d.livePreview_CheckBox.onCheck( true );
+      check( d.previewTimer.isRunning, "dialog: live preview on schedules a rebuild" );
+      d.previewTimer.stop();
+      d.reset_ToolButton.onClick();
+      d.previewTimer.stop();
 
       // Loaded settings must show up in the controls.
       let q = new ForaxxParameters;
