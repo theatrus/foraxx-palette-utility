@@ -36,6 +36,9 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.2.4   2026-09-21 Fix: 2.2.2 and 2.2.3 failed to load. A URL in the
+ *                    #feature-info directive was cut at "//" by the
+ *                    preprocessor. The test runner now loads the script.
  * 2.2.3   2026-09-21 Apache License 2.0; LICENSE and NOTICE ship in the
  *                    package.
  * 2.2.2   2026-09-20 Credit The Coldest Nights, the palette's origin, in the
@@ -60,6 +63,11 @@
 
 #engine v8
 
+// No "//" may appear on a preprocessor directive line below (a URL, for
+// instance): the preprocessor treats it as a comment, which drops the line
+// continuation and turns the rest of the directive into a syntax error.
+// test/run-headless.sh loads this file in PixInsight to catch that.
+
 #feature-id    ForaxxPalette : theatr.us > Foraxx Palette Utility
 
 #feature-icon  @script_icons_dir/ForaxxPalette.svg
@@ -68,7 +76,7 @@
                starless SII/Ha/OIII or Ha/OIII images, plus an optional colour \
                stars image.<br/>\
                <br/>\
-               Palette by The Coldest Nights, https://thecoldestnights.com/<br/>\
+               Palette by The Coldest Nights (thecoldestnights.com).<br/>\
                Original script by Paul Hancock, Paulyman Astro.<br/>\
                Copyright &copy; 2023-2024 Paul Hancock. \
                Copyright &copy; 2026 Yann Ramin.
@@ -76,7 +84,7 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.2.3";
+const VERSION = "2.2.4";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"
