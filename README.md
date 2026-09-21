@@ -161,8 +161,9 @@ Changes needed for the V8 runtime, following Pleiades' porting guide:
 
 ## License
 
-Copyright (c) 2023-2024 Paul Hancock (Paulyman Astro) for the original script.
-Copyright (c) 2026 Yann Ramin for the V8 rewrite and the palette tools. The
-original script is marked "All Rights Reserved"; this port is published with
-attribution as a derivative of that work and does not grant rights beyond
-those the original author allows.
+Apache License 2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Copyright
+2026 Yann Ramin for the V8 rewrite and the palette tools. The Foraxx
+expressions, curves and saturation settings are from Paul Hancock's original
+Foraxx Palette Utility (Paulyman Astro), copyright 2023-2024, and the palette
+itself is [The Coldest Nights](https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/)'
+work.

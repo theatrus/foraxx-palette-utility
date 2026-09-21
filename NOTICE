@@ -1,0 +1,17 @@
+Foraxx Palette Utility for PixInsight
+Copyright 2026 Yann Ramin
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This is a rewrite of the Foraxx Palette Utility by Paul Hancock (Paulyman
+Astro), versions 1.0 to 1.16, 2023-2024, distributed from
+https://foraxxpaletteutility.com/. The Foraxx expressions and the curve and
+saturation settings are his; Copyright (c) 2023-2024 Paul Hancock.
+
+The Foraxx palette and its dynamic PixelMath expressions are the work of
+The Coldest Nights, "PixInsight: Dynamic narrowband combinations with
+PixelMath" (June 2020):
+https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/
+
+This product is based on software from the PixInsight project, developed by
+Pleiades Astrophoto and its contributors (https://pixinsight.com/).

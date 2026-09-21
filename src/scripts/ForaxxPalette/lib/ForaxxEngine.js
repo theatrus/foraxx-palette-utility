@@ -12,6 +12,15 @@
  *                         published at https://foraxxpaletteutility.com/
  * Copyright (C) 2026 Yann Ramin, V8 rewrite and palette tools
  *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy
+ * of the License at http://www.apache.org/licenses/LICENSE-2.0. See LICENSE
+ * and NOTICE in this distribution.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * The Foraxx palette and its expressions are the work of The Coldest Nights:
+ * https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/
+ *
  * Foraxx expressions: The Coldest Nights, "Dynamic Narrowband Combinations
  * with PixelMath".
  ****************************************************************************

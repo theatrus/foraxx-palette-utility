@@ -22,11 +22,17 @@ legacy="FPU_202412230653.zip"
 rm -rf "$dist"
 mkdir -p "$dist"
 
-# Package: the src/ tree only, no OS metadata files.
+# Package: the script and icon trees plus LICENSE and NOTICE beside the
+# script, staged so the source tree stays clean. No OS metadata files.
+stage="$(mktemp -d)"
+trap 'rm -rf "$stage"' EXIT
+mkdir -p "$stage/src/scripts" "$stage/rsc/icons/script"
+cp -r "$here/src/scripts/ForaxxPalette" "$stage/src/scripts/"
+cp -r "$here/rsc/icons/script/ForaxxPalette" "$stage/rsc/icons/script/"
+cp "$here/LICENSE" "$here/NOTICE" "$stage/src/scripts/ForaxxPalette/"
 (
-   cd "$here"
-   zip -q -X -r "$dist/$zipname" src/scripts/ForaxxPalette rsc/icons/script/ForaxxPalette \
-      -x '*.DS_Store' -x '__MACOSX/*' -x '*~'
+   cd "$stage"
+   zip -q -X -r "$dist/$zipname" src rsc -x '*.DS_Store' -x '__MACOSX/*' -x '*~'
 )
 cp "$here/legacy/$legacy" "$dist/$legacy"
 
