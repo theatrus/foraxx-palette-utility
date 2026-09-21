@@ -27,6 +27,8 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.2.2   2026-09-20 Credit The Coldest Nights, the palette's origin, in the
+ *                    dialog and the feature info.
  * 2.2.1   2026-09-20 Menu category renamed to theatr.us; repository moved
  *                    to https://pixinsight.theatr.us/.
  * 2.2.0   2026-09-20 Mask bias and contrast for the Foraxx factors,
@@ -55,6 +57,7 @@
                starless SII/Ha/OIII or Ha/OIII images, plus an optional colour \
                stars image.<br/>\
                <br/>\
+               Palette by The Coldest Nights, https://thecoldestnights.com/<br/>\
                Original script by Paul Hancock, Paulyman Astro.<br/>\
                Copyright &copy; 2023-2024 Paul Hancock. \
                Copyright &copy; 2026 Yann Ramin.
@@ -62,7 +65,7 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.2.1";
+const VERSION = "2.2.2";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"

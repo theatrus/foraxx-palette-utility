@@ -7,7 +7,9 @@ A theatr.us tool; the guide is at
 
 A PixInsight script that builds a Foraxx palette image (or a plain SHO, HOO,
 HSO or OHS mapping) from stretched, starless narrowband images, plus an
-optional colour stars image from the matching stretched star images.
+optional colour stars image from the matching stretched star images. The
+Foraxx palette is [The Coldest Nights](https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/)'
+dynamic narrowband combination.
 
 This is a port of Paul Hancock's (Paulyman Astro) Foraxx Palette Utility to the V8 JavaScript
 runtime that PixInsight 1.9.4 Lockhart introduced. The original script ran on

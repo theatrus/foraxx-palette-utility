@@ -43,7 +43,9 @@ class ForaxxDialog extends Dialog
          + "channel before combination; bias and contrast reshape the two Foraxx mixing "
          + "masks; the extras generate ratio masks, a protected saturation boost and a "
          + "colour-preserving L* curve.</p>"
-         + "<p>Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. "
+         + "<p>The Foraxx palette is The Coldest Nights' dynamic narrowband combination "
+         + "(thecoldestnights.com; the globe button opens the article). "
+         + "Original script by Paul Hancock, Paulyman Astro. Copyright &copy; 2023-2024 Paul Hancock. "
          + "Copyright &copy; 2026 Yann Ramin. All Rights Reserved.</p>";
 
       // ---- Options group ---------------------------------------------------
