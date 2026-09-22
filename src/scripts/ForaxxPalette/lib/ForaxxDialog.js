@@ -71,9 +71,10 @@ class PreviewControl extends Control
 }
 
 /*
- * A resizable, non-modal window holding a large preview. It is a child of
- * the main dialog, so it stays usable while that dialog is modal, and it
- * reports back when the user closes it.
+ * A resizable window holding a large preview. It is a child of the main
+ * dialog and is shown with show(), never open(): open() is window-modal and
+ * would block the main dialog, while a shown child of a modal dialog stays
+ * usable beside it. It reports back when the user closes it.
  */
 class PreviewWindow extends Dialog
 {
@@ -82,7 +83,7 @@ class PreviewWindow extends Dialog
       super( parent );
       this.windowTitle = TITLE + " preview";
       this.userResizable = true;
-      this.control = new PreviewControl( this, 640, 480, false );
+      this.control = new PreviewControl( this, 900, 640, false );
       this.status_Label = new Label( this );
       this.status_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
       this.sizer = new VerticalSizer;
@@ -112,6 +113,7 @@ class ForaxxDialog extends Dialog
       this.livePreview = true;
       this.previewBusy = false;
       this.previewWindow = null;
+      this.poppedOut = false;
       this.lastPreview = null;
       this.previewTimer = new Timer( 0.35, false/*periodic*/ );
       this.previewTimer.onTimeout = () => this.renderPreviewNow();
@@ -122,6 +124,7 @@ class ForaxxDialog extends Dialog
       this.onReturn = ( retVal ) =>
       {
          this.previewTimer.stop();
+         this.poppedOut = false;
          if ( this.previewWindow != null )
             this.previewWindow.hide();
       };
@@ -268,8 +271,8 @@ class ForaxxDialog extends Dialog
 
       this.popout_CheckBox = new CheckBox( this );
       this.popout_CheckBox.text = "Pop out";
-      this.popout_CheckBox.toolTip = "<p>Open the preview in a separate, resizable window beside this dialog. "
-         + "While it is open the preview is built at 1024 pixels instead of 480, so it takes a little longer.</p>";
+      this.popout_CheckBox.toolTip = "<p>Show the preview in a separate, resizable window that stays usable beside this dialog. "
+         + "While it is open the preview is built at 1024 pixels instead of 480.</p>";
       this.popout_CheckBox.onCheck = ( checked ) => this.setPopout( checked );
 
       this.previewStatus_Label = new Label( this );
@@ -671,9 +674,12 @@ class ForaxxDialog extends Dialog
             this.previewWindow = new PreviewWindow( this, () =>
             {
                // Closed by the user: reflect it without re-entering here.
+               this.poppedOut = false;
                this.popout_CheckBox.checked = false;
             } );
-         this.previewWindow.open();
+         this.poppedOut = true;
+         this.previewWindow.show();
+         this.previewWindow.bringToFront();
          if ( this.lastPreview != null )
          {
             this.previewWindow.control.setBitmap( this.lastPreview.bitmap );
@@ -681,9 +687,11 @@ class ForaxxDialog extends Dialog
          }
          this.schedulePreview();
       }
-      else if ( this.previewWindow != null )
+      else
       {
-         this.previewWindow.hide();
+         this.poppedOut = false;
+         if ( this.previewWindow != null )
+            this.previewWindow.hide();
       }
    }
 
@@ -692,7 +700,7 @@ class ForaxxDialog extends Dialog
     */
    isPoppedOut()
    {
-      return this.previewWindow != null && this.previewWindow.visible;
+      return this.poppedOut && this.previewWindow != null;
    }
 
    /*

@@ -74,7 +74,7 @@ original utility.
   to 480 pixels in hidden windows, so the preview includes every option and
   the standard adjustments, and it shows exactly what Run will produce. Turn
   off Live and use Refresh on a slow machine. **Pop out** opens the preview
-  in a separate, resizable window beside the dialog, built at 1024 pixels.
+  in a separate, resizable window that stays usable beside the dialog, built at 1024 pixels.
 - Options are remembered between runs. The reset button restores defaults.
 
 ## Install

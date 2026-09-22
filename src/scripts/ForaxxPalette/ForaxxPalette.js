@@ -36,6 +36,9 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.3.2   2026-09-22 Fix: the pop-out window blocked the dialog (it was
+ *                    opened window-modal) and was small. It is now shown
+ *                    non-modally, 900x640 by default.
  * 2.3.1   2026-09-22 Pop out: the preview in a separate, resizable window
  *                    beside the dialog, built at 1024 pixels.
  * 2.3.0   2026-09-21 Preview: the real build on downsampled copies of
@@ -89,7 +92,7 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.3.1";
+const VERSION = "2.3.2";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"
