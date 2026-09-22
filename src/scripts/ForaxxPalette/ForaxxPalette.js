@@ -38,7 +38,7 @@
  * 1.16    2024-12-23 PI 1.9 ready.
  * 2.3.1   2026-09-22 Pop out: the preview in a separate, resizable window
  *                    beside the dialog, built at 1024 pixels.
- * 2.3.0   2026-09-21 Live preview: the real build on downsampled copies of
+ * 2.3.0   2026-09-21 Preview: the real build on downsampled copies of
  *                    the inputs in hidden windows, rebuilt a moment after
  *                    any change.
  * 2.2.4   2026-09-21 Fix: 2.2.2 and 2.2.3 failed to load. A URL in the
