@@ -26,12 +26,15 @@
  */
 class PreviewControl extends Control
 {
-   constructor( parent, width, height )
+   constructor( parent, width, height, fixed = true )
    {
       super( parent );
       this.bitmap = null;
       this.message = "Select the images to see a preview.";
-      this.setScaledFixedSize( width, height );
+      if ( fixed )
+         this.setScaledFixedSize( width, height );
+      else
+         this.setScaledMinSize( width, height );
       this.onPaint = ( x0, y0, x1, y1 ) =>
       {
          let g = new Graphics( this );
@@ -67,6 +70,35 @@ class PreviewControl extends Control
    }
 }
 
+/*
+ * A resizable, non-modal window holding a large preview. It is a child of
+ * the main dialog, so it stays usable while that dialog is modal, and it
+ * reports back when the user closes it.
+ */
+class PreviewWindow extends Dialog
+{
+   constructor( parent, onClosed )
+   {
+      super( parent );
+      this.windowTitle = TITLE + " preview";
+      this.userResizable = true;
+      this.control = new PreviewControl( this, 640, 480, false );
+      this.status_Label = new Label( this );
+      this.status_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
+      this.sizer = new VerticalSizer;
+      this.sizer.margin = 6;
+      this.sizer.spacing = 4;
+      this.sizer.add( this.control, 100 );
+      this.sizer.add( this.status_Label );
+      this.adjustToContents();
+      this.onClose = () =>
+      {
+         onClosed();
+         return true;
+      };
+   }
+}
+
 class ForaxxDialog extends Dialog
 {
    constructor( params )
@@ -79,8 +111,20 @@ class ForaxxDialog extends Dialog
       this.checkBoxes = [];
       this.livePreview = true;
       this.previewBusy = false;
+      this.previewWindow = null;
+      this.lastPreview = null;
       this.previewTimer = new Timer( 0.35, false/*periodic*/ );
       this.previewTimer.onTimeout = () => this.renderPreviewNow();
+
+      // The dialog is closing (Run or Cancel): stop the timer and take the
+      // preview window down with it. Event handlers are instance properties
+      // in PJSR; a class method would be shadowed by the native accessor.
+      this.onReturn = ( retVal ) =>
+      {
+         this.previewTimer.stop();
+         if ( this.previewWindow != null )
+            this.previewWindow.hide();
+      };
 
       let labelWidth = this.font.width( "Output identifier:" + "M" );
 
@@ -222,6 +266,12 @@ class ForaxxDialog extends Dialog
       this.refreshPreview_Button.icon = this.scaledResource( ":/icons/refresh.png" );
       this.refreshPreview_Button.onClick = () => this.renderPreviewNow();
 
+      this.popout_CheckBox = new CheckBox( this );
+      this.popout_CheckBox.text = "Pop out";
+      this.popout_CheckBox.toolTip = "<p>Open the preview in a separate, resizable window beside this dialog. "
+         + "While it is open the preview is built at 1024 pixels instead of 480, so it takes a little longer.</p>";
+      this.popout_CheckBox.onCheck = ( checked ) => this.setPopout( checked );
+
       this.previewStatus_Label = new Label( this );
       this.previewStatus_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
       this.previewStatus_Label.text = "";
@@ -230,6 +280,7 @@ class ForaxxDialog extends Dialog
       this.previewButtons_Sizer.spacing = 6;
       this.previewButtons_Sizer.add( this.livePreview_CheckBox );
       this.previewButtons_Sizer.add( this.refreshPreview_Button );
+      this.previewButtons_Sizer.add( this.popout_CheckBox );
       this.previewButtons_Sizer.addSpacing( 6 );
       this.previewButtons_Sizer.add( this.previewStatus_Label, 100 );
 
@@ -610,6 +661,49 @@ class ForaxxDialog extends Dialog
    }
 
    /*
+    * Opens or hides the separate preview window.
+    */
+   setPopout( on )
+   {
+      if ( on )
+      {
+         if ( this.previewWindow == null )
+            this.previewWindow = new PreviewWindow( this, () =>
+            {
+               // Closed by the user: reflect it without re-entering here.
+               this.popout_CheckBox.checked = false;
+            } );
+         this.previewWindow.open();
+         if ( this.lastPreview != null )
+         {
+            this.previewWindow.control.setBitmap( this.lastPreview.bitmap );
+            this.previewWindow.status_Label.text = this.previewStatus_Label.text;
+         }
+         this.schedulePreview();
+      }
+      else if ( this.previewWindow != null )
+      {
+         this.previewWindow.hide();
+      }
+   }
+
+   /*
+    * True while the separate preview window is showing.
+    */
+   isPoppedOut()
+   {
+      return this.previewWindow != null && this.previewWindow.visible;
+   }
+
+   /*
+    * Longest side of the preview render: larger when popped out.
+    */
+   previewSize()
+   {
+      return this.isPoppedOut() ? 1024 : 480;
+   }
+
+   /*
     * Rebuilds the preview shortly, coalescing bursts of slider updates.
     */
    schedulePreview()
@@ -639,9 +733,15 @@ class ForaxxDialog extends Dialog
       try
       {
          let t = new ElapsedTime;
-         let r = renderPreview( this.params, 480 );
+         let r = renderPreview( this.params, this.previewSize() );
+         this.lastPreview = r;
          this.preview_Control.setBitmap( r.bitmap );
          this.previewStatus_Label.text = format( "%dx%d at %.0f%%, %.2f s", r.width, r.height, 100*r.scale, t.value );
+         if ( this.isPoppedOut() )
+         {
+            this.previewWindow.control.setBitmap( r.bitmap );
+            this.previewWindow.status_Label.text = this.previewStatus_Label.text;
+         }
          return true;
       }
       catch ( e )

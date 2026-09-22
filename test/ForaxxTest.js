@@ -544,6 +544,22 @@ function run()
       check( okPreview === true && d.preview_Control.bitmap != null && d.previewStatus_Label.text.indexOf( " at " ) > 0
              && ImageWindow.windows.length == wins, "dialog: preview renders a bitmap and leaves no windows (status: " + d.previewStatus_Label.text
              + "; message: " + d.preview_Control.message + "; windows " + wins + " -> " + ImageWindow.windows.length + ")" );
+      // Pop out: a child window that mirrors the preview at a larger size.
+      d.popout_CheckBox.onCheck( true );
+      check( d.previewWindow != null && d.isPoppedOut() && d.previewSize() == 1024, "dialog: pop out opens the preview window and raises the render size" );
+      check( d.previewWindow.control.bitmap != null, "dialog: pop-out window receives the last preview at once" );
+      d.previewTimer.stop();
+      let wins2 = ImageWindow.windows.length;
+      check( d.renderPreviewNow() === true && d.previewWindow.control.bitmap === d.lastPreview.bitmap && d.lastPreview.width <= 1024
+             && ImageWindow.windows.length == wins2, "dialog: popped-out render goes to both views (" + d.previewStatus_Label.text + ")" );
+      d.previewWindow.onClose();
+      check( !d.popout_CheckBox.checked, "dialog: closing the window unchecks pop out" );
+      d.popout_CheckBox.onCheck( false );
+      check( !d.isPoppedOut() && d.previewSize() == 480, "dialog: pop out off hides the window and restores the size" );
+      d.onReturn( 1 );
+      check( !d.previewTimer.isRunning && !d.isPoppedOut(), "dialog: closing the dialog stops the timer and the window" );
+      d.previewWindow = null;
+
       d.livePreview_CheckBox.onCheck( false );
       d.schedulePreview();
       check( !d.previewTimer.isRunning, "dialog: live preview off stops scheduling" );
