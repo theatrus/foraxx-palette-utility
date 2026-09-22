@@ -22,30 +22,47 @@
  */
 
 /*
- * Shows a bitmap scaled to fit, or a message when there is none.
+ * The preview pane: a frame that stretches with the dialog and shows the
+ * rendered region scaled to fit. Drag a rectangle to zoom into it, drag with
+ * Ctrl to pan, use the wheel to zoom about the pointer, double-click to see
+ * the whole image. Zoom is capped at 4:1. The owner is asked to rebuild the
+ * preview whenever the region or the pane size changes.
  */
-class PreviewControl extends Control
+class PreviewControl extends Frame
 {
-   constructor( parent, width, height, fixed = true )
+   constructor( parent, owner )
    {
       super( parent );
-      this.bitmap = null;
+      this.owner = owner;
+      this.bitmap = null;         // the last render, covering `rendered`
+      this.rendered = null;       // Rect in image coordinates the bitmap shows
+      this.imageWidth = 0;        // full image size, 0 until known
+      this.imageHeight = 0;
+      this.selection = null;      // Rect in image coordinates being viewed, null = whole image
       this.message = "Select the images to see a preview.";
-      if ( fixed )
-         this.setScaledFixedSize( width, height );
-      else
-         this.setScaledMinSize( width, height );
+      this.maxZoom = 4;
+      this.dragging = false;
+      this.panning = false;
+      this.dragFrom = null;
+      this.dragTo = null;
+      this.setScaledMinSize( 420, 360 );
+      this.cursor = new Cursor( StdCursor.Arrow );
+
       this.onPaint = ( x0, y0, x1, y1 ) =>
       {
          let g = new Graphics( this );
          g.fillRect( 0, 0, this.width, this.height, new Brush( 0xff181818 ) );
-         if ( this.bitmap != null && this.bitmap.width > 0 && this.bitmap.height > 0 )
+         if ( this.bitmap != null && this.bitmap.width > 0 )
          {
-            let s = Math.min( this.width/this.bitmap.width, this.height/this.bitmap.height );
-            let w = Math.max( 1, Math.round( this.bitmap.width*s ) );
-            let h = Math.max( 1, Math.round( this.bitmap.height*s ) );
-            let x = Math.floor( (this.width - w)/2 ), y = Math.floor( (this.height - h)/2 );
-            g.drawScaledBitmap( x, y, x + w, y + h, this.bitmap );
+            let vp = this.viewPort();
+            g.drawScaledBitmap( vp.x0, vp.y0, vp.x1, vp.y1, this.bitmap );
+            if ( this.dragging && !this.panning && this.dragFrom && this.dragTo )
+            {
+               let r = this.dragRect();
+               g.fillRect( r, new Brush( 0x30ffffff ) );
+               g.pen = new Pen( 0xffffffff );
+               g.strokeRect( r );
+            }
          }
          else
          {
@@ -54,11 +71,183 @@ class PreviewControl extends Control
          }
          g.end();
       };
+
+      this.onResize = ( w, h, oldW, oldH ) =>
+      {
+         if ( this.owner )
+            this.owner.schedulePreview();
+      };
+
+      this.onMousePress = ( x, y, button, buttons, modifiers ) =>
+      {
+         if ( this.bitmap == null )
+            return;
+         this.dragging = true;
+         this.panning = (modifiers & KeyModifier.Control) != 0;
+         this.dragFrom = new Point( x, y );
+         this.dragTo = new Point( x, y );
+         this.cursor = new Cursor( this.panning ? StdCursor.ClosedHand : StdCursor.Cross );
+      };
+
+      this.onMouseMove = ( x, y, buttons, modifiers ) =>
+      {
+         if ( !this.dragging )
+            return;
+         this.dragTo = new Point( x, y );
+         this.repaint();
+      };
+
+      this.onMouseRelease = ( x, y, button, buttons, modifiers ) =>
+      {
+         if ( !this.dragging )
+            return;
+         this.dragging = false;
+         this.cursor = new Cursor( StdCursor.Arrow );
+         let from = this.dragFrom, to = new Point( x, y );
+         this.dragFrom = this.dragTo = null;
+         if ( this.panning )
+         {
+            let z = this.zoomFactor();
+            this.panBy( (from.x - to.x)/z, (from.y - to.y)/z );
+         }
+         else
+         {
+            let r = new Rect( Math.min( from.x, to.x ), Math.min( from.y, to.y ), Math.max( from.x, to.x ), Math.max( from.y, to.y ) );
+            if ( r.width >= 8 && r.height >= 8 )
+               this.setSelection( this.viewToImage( r ) );
+            else
+               this.repaint();
+         }
+      };
+
+      this.onMouseWheel = ( x, y, dy, buttons, modifiers ) =>
+      {
+         if ( this.bitmap == null )
+            return;
+         let p = this.viewToImagePoint( new Point( x, y ) );
+         this.zoomAbout( p, dy < 0 ? 1.5 : 1/1.5 );
+      };
+
+      this.onMouseDoubleClick = ( x, y, buttons, modifiers ) =>
+      {
+         this.setSelection( null );
+      };
    }
 
-   setBitmap( bitmap )
+   /*
+    * The region currently viewed, as a Rect in image coordinates.
+    */
+   region()
+   {
+      return this.selection || new Rect( 0, 0, this.imageWidth, this.imageHeight );
+   }
+
+   /*
+    * Screen pixels per image pixel for the current region and pane size.
+    */
+   zoomFactor()
+   {
+      let r = this.region();
+      if ( r.width <= 0 || r.height <= 0 || this.width <= 0 || this.height <= 0 )
+         return 1;
+      return Math.min( this.width/r.width, this.height/r.height, this.maxZoom );
+   }
+
+   /*
+    * Where the region lands in the pane, centred.
+    */
+   viewPort()
+   {
+      let r = this.region(), z = this.zoomFactor();
+      let w = r.width*z, h = r.height*z;
+      let x0 = Math.max( 0, 0.5*(this.width - w) ), y0 = Math.max( 0, 0.5*(this.height - h) );
+      return new Rect( x0, y0, x0 + w, y0 + h );
+   }
+
+   dragRect()
+   {
+      let vp = this.viewPort();
+      let clamp = ( v, lo, hi ) => Math.max( lo, Math.min( hi, v ) );
+      return new Rect( clamp( Math.min( this.dragFrom.x, this.dragTo.x ), vp.x0, vp.x1 ), clamp( Math.min( this.dragFrom.y, this.dragTo.y ), vp.y0, vp.y1 ),
+                       clamp( Math.max( this.dragFrom.x, this.dragTo.x ), vp.x0, vp.x1 ), clamp( Math.max( this.dragFrom.y, this.dragTo.y ), vp.y0, vp.y1 ) );
+   }
+
+   viewToImagePoint( p )
+   {
+      let r = this.region(), vp = this.viewPort();
+      return new Point( r.x0 + r.width*(p.x - vp.x0)/vp.width, r.y0 + r.height*(p.y - vp.y0)/vp.height );
+   }
+
+   viewToImage( rect )
+   {
+      let a = this.viewToImagePoint( new Point( rect.x0, rect.y0 ) ), b = this.viewToImagePoint( new Point( rect.x1, rect.y1 ) );
+      return new Rect( a.x, a.y, b.x, b.y );
+   }
+
+   /*
+    * Sets the viewed region, clamped to the image and to the zoom cap, and
+    * asks for a rebuild. null shows the whole image.
+    */
+   setSelection( rect )
+   {
+      if ( rect == null || this.imageWidth <= 0 )
+         this.selection = null;
+      else
+      {
+         let minW = this.width/this.maxZoom, minH = this.height/this.maxZoom;
+         let w = Math.max( minW, Math.min( this.imageWidth, rect.width ) );
+         let h = Math.max( minH, Math.min( this.imageHeight, rect.height ) );
+         let cx = rect.x0 + 0.5*rect.width, cy = rect.y0 + 0.5*rect.height;
+         let x0 = Math.max( 0, Math.min( this.imageWidth - w, cx - 0.5*w ) );
+         let y0 = Math.max( 0, Math.min( this.imageHeight - h, cy - 0.5*h ) );
+         this.selection = new Rect( x0, y0, x0 + w, y0 + h );
+         if ( this.selection.width >= this.imageWidth && this.selection.height >= this.imageHeight )
+            this.selection = null;
+      }
+      if ( this.owner )
+         this.owner.schedulePreview();
+   }
+
+   panBy( dx, dy )
+   {
+      if ( this.selection == null )
+         return;
+      let r = this.selection;
+      this.setSelection( new Rect( r.x0 + dx, r.y0 + dy, r.x1 + dx, r.y1 + dy ) );
+   }
+
+   zoomAbout( p, factor )
+   {
+      let r = this.region();
+      let w = r.width/factor, h = r.height/factor;
+      // Keep the image point under the pointer where it is.
+      let fx = (p.x - r.x0)/r.width, fy = (p.y - r.y0)/r.height;
+      this.setSelection( new Rect( p.x - fx*w, p.y - fy*h, p.x + (1 - fx)*w, p.y + (1 - fy)*h ) );
+   }
+
+   /*
+    * The pixel size to render for the current pane and region.
+    */
+   renderSize()
+   {
+      let w = this.width > 0 ? this.width : 480, h = this.height > 0 ? this.height : 360;
+      return { width: w, height: h };
+   }
+
+   setImageSize( width, height )
+   {
+      if ( width != this.imageWidth || height != this.imageHeight )
+      {
+         this.imageWidth = width;
+         this.imageHeight = height;
+         this.selection = null;
+      }
+   }
+
+   setBitmap( bitmap, rendered )
    {
       this.bitmap = bitmap;
+      this.rendered = rendered;
       this.repaint();
    }
 
@@ -67,36 +256,6 @@ class PreviewControl extends Control
       this.bitmap = null;
       this.message = text;
       this.repaint();
-   }
-}
-
-/*
- * A resizable window holding a large preview. It is a child of the main
- * dialog and is shown with show(), never open(): open() is window-modal and
- * would block the main dialog, while a shown child of a modal dialog stays
- * usable beside it. It reports back when the user closes it.
- */
-class PreviewWindow extends Dialog
-{
-   constructor( parent, onClosed )
-   {
-      super( parent );
-      this.windowTitle = TITLE + " preview";
-      this.userResizable = true;
-      this.control = new PreviewControl( this, 900, 640, false );
-      this.status_Label = new Label( this );
-      this.status_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
-      this.sizer = new VerticalSizer;
-      this.sizer.margin = 6;
-      this.sizer.spacing = 4;
-      this.sizer.add( this.control, 100 );
-      this.sizer.add( this.status_Label );
-      this.adjustToContents();
-      this.onClose = () =>
-      {
-         onClosed();
-         return true;
-      };
    }
 }
 
@@ -112,8 +271,7 @@ class ForaxxDialog extends Dialog
       this.checkBoxes = [];
       this.livePreview = true;
       this.previewBusy = false;
-      this.previewWindow = null;
-      this.poppedOut = false;
+      this.previewCache = new PreviewSourceCache;
       this.lastPreview = null;
       this.previewTimer = new Timer( 0.35, false/*periodic*/ );
       this.previewTimer.onTimeout = () => this.renderPreviewNow();
@@ -124,9 +282,7 @@ class ForaxxDialog extends Dialog
       this.onReturn = ( retVal ) =>
       {
          this.previewTimer.stop();
-         this.poppedOut = false;
-         if ( this.previewWindow != null )
-            this.previewWindow.hide();
+         this.previewCache.dispose();
       };
 
       let labelWidth = this.font.width( "Output identifier:" + "M" );
@@ -249,9 +405,11 @@ class ForaxxDialog extends Dialog
 
       // ---- Preview -----------------------------------------------------------
 
-      this.preview_Control = new PreviewControl( this, 400, 250 );
-      this.preview_Control.toolTip = "<p>The result, built from copies of the selected images downsampled to 480 pixels, "
-         + "with every option applied. Adjustments and the combined image are included; the factor and ratio masks are not.</p>";
+      this.preview_Control = new PreviewControl( this, this );
+      this.preview_Control.toolTip = "<p>The result, built from the selected images with every option applied, "
+         + "for the region shown. Adjustments and the combined image are included; the factor and ratio masks are not.</p>"
+         + "<p>Drag a rectangle to zoom into it, drag with Ctrl to pan, use the mouse wheel to zoom about the pointer, "
+         + "and double-click to see the whole image. Enlarge the dialog for a larger preview.</p>";
 
       this.livePreview_CheckBox = new CheckBox( this );
       this.livePreview_CheckBox.text = "Live";
@@ -269,11 +427,24 @@ class ForaxxDialog extends Dialog
       this.refreshPreview_Button.icon = this.scaledResource( ":/icons/refresh.png" );
       this.refreshPreview_Button.onClick = () => this.renderPreviewNow();
 
-      this.popout_CheckBox = new CheckBox( this );
-      this.popout_CheckBox.text = "Pop out";
-      this.popout_CheckBox.toolTip = "<p>Show the preview in a separate, resizable window that stays usable beside this dialog. "
-         + "While it is open the preview is built at 1024 pixels instead of 480.</p>";
-      this.popout_CheckBox.onCheck = ( checked ) => this.setPopout( checked );
+      this.zoomFit_Button = new PushButton( this );
+      this.zoomFit_Button.text = "Whole image";
+      this.zoomFit_Button.toolTip = "<p>Show the whole image again (or double-click the preview).</p>";
+      this.zoomFit_Button.onClick = () => this.preview_Control.setSelection( null );
+
+      this.zoom1_Button = new PushButton( this );
+      this.zoom1_Button.text = "1:1";
+      this.zoom1_Button.toolTip = "<p>Show the centre of the current region at one screen pixel per image pixel.</p>";
+      this.zoom1_Button.onClick = () =>
+      {
+         let c = this.preview_Control;
+         if ( c.imageWidth > 0 )
+         {
+            let r = c.region();
+            c.setSelection( new Rect( r.x0 + 0.5*r.width - 0.5*c.width, r.y0 + 0.5*r.height - 0.5*c.height,
+                                      r.x0 + 0.5*r.width + 0.5*c.width, r.y0 + 0.5*r.height + 0.5*c.height ) );
+         }
+      };
 
       this.previewStatus_Label = new Label( this );
       this.previewStatus_Label.textAlignment = TextAlignment.Left | TextAlignment.VertCenter;
@@ -283,14 +454,15 @@ class ForaxxDialog extends Dialog
       this.previewButtons_Sizer.spacing = 6;
       this.previewButtons_Sizer.add( this.livePreview_CheckBox );
       this.previewButtons_Sizer.add( this.refreshPreview_Button );
-      this.previewButtons_Sizer.add( this.popout_CheckBox );
+      this.previewButtons_Sizer.add( this.zoomFit_Button );
+      this.previewButtons_Sizer.add( this.zoom1_Button );
       this.previewButtons_Sizer.addSpacing( 6 );
       this.previewButtons_Sizer.add( this.previewStatus_Label, 100 );
 
       this.preview_Sizer = new VerticalSizer;
       this.preview_Sizer.margin = 6;
       this.preview_Sizer.spacing = 4;
-      this.preview_Sizer.add( this.preview_Control );
+      this.preview_Sizer.add( this.preview_Control, 100 );
       this.preview_Sizer.add( this.previewButtons_Sizer );
 
       this.preview_GroupBox = new GroupBox( this );
@@ -457,33 +629,31 @@ class ForaxxDialog extends Dialog
       this.left_Sizer.add( this.options_GroupBox );
       this.left_Sizer.addStretch();
 
-      this.right_Sizer = new VerticalSizer;
-      this.right_Sizer.spacing = 8;
-      this.right_Sizer.add( this.preview_GroupBox );
-      this.right_Sizer.add( this.masks_GroupBox );
-      this.right_Sizer.add( this.extras_GroupBox );
-      this.right_Sizer.addStretch();
+      this.middle_Sizer = new VerticalSizer;
+      this.middle_Sizer.spacing = 8;
+      this.middle_Sizer.add( this.masks_GroupBox );
+      this.middle_Sizer.add( this.extras_GroupBox );
+      this.middle_Sizer.addStretch();
 
       this.columns_Sizer = new HorizontalSizer;
       this.columns_Sizer.spacing = 8;
-      this.columns_Sizer.add( this.left_Sizer, 50 );
-      this.columns_Sizer.add( this.right_Sizer, 50 );
+      this.columns_Sizer.add( this.left_Sizer );
+      this.columns_Sizer.add( this.middle_Sizer );
+      this.columns_Sizer.add( this.preview_GroupBox, 100 );
 
       this.sizer = new VerticalSizer;
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.info_Label );
       this.sizer.add( this.views_GroupBox );
-      this.sizer.add( this.columns_Sizer );
+      this.sizer.add( this.columns_Sizer, 100 );
       this.sizer.add( this.buttons_Sizer );
 
       this.userResizable = true;
-      this.setScaledMinWidth( 980 );
 
       this.loadFromParameters();
 
       this.adjustToContents();
-      this.setFixedHeight();
    }
 
    /*
@@ -664,54 +834,6 @@ class ForaxxDialog extends Dialog
    }
 
    /*
-    * Opens or hides the separate preview window.
-    */
-   setPopout( on )
-   {
-      if ( on )
-      {
-         if ( this.previewWindow == null )
-            this.previewWindow = new PreviewWindow( this, () =>
-            {
-               // Closed by the user: reflect it without re-entering here.
-               this.poppedOut = false;
-               this.popout_CheckBox.checked = false;
-            } );
-         this.poppedOut = true;
-         this.previewWindow.show();
-         this.previewWindow.bringToFront();
-         if ( this.lastPreview != null )
-         {
-            this.previewWindow.control.setBitmap( this.lastPreview.bitmap );
-            this.previewWindow.status_Label.text = this.previewStatus_Label.text;
-         }
-         this.schedulePreview();
-      }
-      else
-      {
-         this.poppedOut = false;
-         if ( this.previewWindow != null )
-            this.previewWindow.hide();
-      }
-   }
-
-   /*
-    * True while the separate preview window is showing.
-    */
-   isPoppedOut()
-   {
-      return this.poppedOut && this.previewWindow != null;
-   }
-
-   /*
-    * Longest side of the preview render: larger when popped out.
-    */
-   previewSize()
-   {
-      return this.isPoppedOut() ? 1024 : 480;
-   }
-
-   /*
     * Rebuilds the preview shortly, coalescing bursts of slider updates.
     */
    schedulePreview()
@@ -735,21 +857,20 @@ class ForaxxDialog extends Dialog
       {
          this.preview_Control.showMessage( error );
          this.previewStatus_Label.text = "";
+         this.previewCache.dispose();
          return false;
       }
       this.previewBusy = true;
       try
       {
          let t = new ElapsedTime;
-         let r = renderPreview( this.params, this.previewSize() );
+         let c = this.preview_Control;
+         c.setImageSize( this.params.ha.image.width, this.params.ha.image.height );
+         let size = c.renderSize();
+         let r = renderPreview( this.params, { width: size.width, height: size.height, selection: c.selection, cache: this.previewCache } );
          this.lastPreview = r;
-         this.preview_Control.setBitmap( r.bitmap );
-         this.previewStatus_Label.text = format( "%dx%d at %.0f%%, %.2f s", r.width, r.height, 100*r.scale, t.value );
-         if ( this.isPoppedOut() )
-         {
-            this.previewWindow.control.setBitmap( r.bitmap );
-            this.previewWindow.status_Label.text = this.previewStatus_Label.text;
-         }
+         c.setBitmap( r.bitmap, r.selection );
+         this.previewStatus_Label.text = format( "%dx%d, %.0f%% of full size, %.2f s", r.width, r.height, 100*r.scale, t.value );
          return true;
       }
       catch ( e )

@@ -70,11 +70,14 @@ original utility.
 - **L\* lift.** Colour-preserving brightness: a curve on the CIE L* channel
   only, PixInsight's equivalent of a Luminosity-mode curve.
 - **Preview.** The dialog shows the result, rebuilt a moment after any
-  change: the real build runs on copies of the selected images downsampled
-  to 480 pixels in hidden windows, so the preview includes every option and
-  the standard adjustments, and it shows exactly what Run will produce. Turn
-  off Live and use Refresh on a slow machine. **Pop out** opens the preview
-  in a separate, resizable window that stays usable beside the dialog, built at 1024 pixels.
+  change: the real build runs on copies of the selected images in hidden
+  windows, so the preview includes every option and the standard
+  adjustments, and it shows exactly what Run will produce. The preview pane
+  grows with the dialog, so enlarge the dialog for a larger preview. Drag a
+  rectangle to zoom into it, drag with Ctrl to pan, use the mouse wheel to
+  zoom about the pointer, and double-click for the whole image; zoom is
+  capped at 4:1. Only the region shown is built. Turn off Live and use
+  Refresh on a slow machine.
 - Options are remembered between runs. The reset button restores defaults.
 
 ## Install

@@ -475,6 +475,25 @@ function run()
       try { renderPreview( q, 32 ); } catch ( e ) { threw = e.message.indexOf( "select an image" ) >= 0; }
       check( threw, "preview: refuses an incomplete selection" );
 
+      // Region rendering with a cache: a quarter of the image at 1:1.
+      p.threeChannels = true; p.createStars = true; p.applyAdjustments = false; p.createCombined = false;
+      p.protectedSaturation = false; p.lightnessLift = 0;
+      let cache = new PreviewSourceCache;
+      let before3 = ImageWindow.windows.length;
+      let rr = renderPreview( p, { width: 64, height: 64, selection: new Rect( 16, 12, 48, 36 ), cache } );
+      check( rr.width == 32 && rr.height == 24 && near( rr.scale, 1, 1e-6 ) && rr.selection.x0 == 16 && rr.selection.y1 == 36,
+             "preview: a 32x24 region renders at 1:1 when it fits" );
+      let px2 = rr.bitmap.pixel( 0, 0 );
+      check( Math.abs( ((px2 >> 16) & 0xff) - want[0] ) <= 2 && Math.abs( (px2 & 0xff) - want[2] ) <= 2, "preview: region pixels match the formula" );
+      check( ImageWindow.windows.length == before3 + cache.windows.length && cache.windows.length == 6, "preview: cache keeps the six source copies open" );
+      let firstKey = cache.key;
+      renderPreview( p, { width: 64, height: 64, selection: new Rect( 16, 12, 48, 36 ), cache } );
+      check( cache.key === firstKey && ImageWindow.windows.length == before3 + 6, "preview: the same region reuses the cache" );
+      renderPreview( p, { width: 16, height: 16, selection: null, cache } );
+      check( cache.key !== firstKey && ImageWindow.windows.length == before3 + 6, "preview: a new region rebuilds the cache in place" );
+      cache.dispose();
+      check( ImageWindow.windows.length == before3, "preview: dispose closes the cached copies" );
+
       for ( let k in cviews )
          cviews[k].window.forceClose();
    }
@@ -541,24 +560,37 @@ function run()
       d.oiii_Row.viewList.onViewSelected( views.oiii );
       let wins = ImageWindow.windows.length;
       let okPreview = d.renderPreviewNow();
-      check( okPreview === true && d.preview_Control.bitmap != null && d.previewStatus_Label.text.indexOf( " at " ) > 0
-             && ImageWindow.windows.length == wins, "dialog: preview renders a bitmap and leaves no windows (status: " + d.previewStatus_Label.text
+      check( okPreview === true && d.preview_Control.bitmap != null && d.previewStatus_Label.text.indexOf( "full size" ) > 0
+             && ImageWindow.windows.length == wins + 2 && d.previewCache.windows.length == 2,
+             "dialog: preview renders a bitmap and keeps only the two cached sources open (status: " + d.previewStatus_Label.text
              + "; message: " + d.preview_Control.message + "; windows " + wins + " -> " + ImageWindow.windows.length + ")" );
-      // Pop out: a child window that mirrors the preview at a larger size.
-      d.popout_CheckBox.onCheck( true );
-      check( d.previewWindow != null && d.isPoppedOut() && d.previewSize() == 1024, "dialog: pop out opens the preview window and raises the render size" );
-      check( d.previewWindow.control.bitmap != null, "dialog: pop-out window receives the last preview at once" );
+      // The preview pane: region selection, zoom cap, pan bounds and reset.
+      let c = d.preview_Control;
+      check( c.imageWidth == W && c.imageHeight == H && c.selection == null, "dialog: preview pane knows the image size and shows it whole" );
       d.previewTimer.stop();
-      let wins2 = ImageWindow.windows.length;
-      check( d.renderPreviewNow() === true && d.previewWindow.control.bitmap === d.lastPreview.bitmap && d.lastPreview.width <= 1024
-             && ImageWindow.windows.length == wins2, "dialog: popped-out render goes to both views (" + d.previewStatus_Label.text + ")" );
-      d.previewWindow.onClose();
-      check( !d.popout_CheckBox.checked, "dialog: closing the window unchecks pop out" );
-      d.popout_CheckBox.onCheck( false );
-      check( !d.isPoppedOut() && d.previewSize() == 480, "dialog: pop out off hides the window and restores the size" );
+      c.setSelection( new Rect( 10, 10, 40, 30 ) );
+      d.previewTimer.stop();
+      check( c.selection == null, "dialog: a region smaller than the zoom cap allows on this tiny image shows the whole image" );
+      let capZoom = c.maxZoom;
+      c.maxZoom = 1000; // the test image is far smaller than the pane, so lift the cap to test regions
+      c.setSelection( new Rect( 10, 10, 40, 30 ) );
+      d.previewTimer.stop();
+      check( c.selection != null && c.selection.width >= 30 && c.selection.x0 >= 0 && c.selection.x1 <= W, "dialog: a dragged rectangle becomes the viewed region" );
+      let wins3 = ImageWindow.windows.length;
+      check( d.renderPreviewNow() === true && d.lastPreview.selection.x0 == Math.floor( c.selection.x0 ) && d.lastPreview.width <= W
+             && ImageWindow.windows.length == wins3, "dialog: the region renders and only the cache stays open (" + d.previewStatus_Label.text + ")" );
+      c.panBy( 1000, 1000 );
+      d.previewTimer.stop();
+      check( c.selection.x1 <= W && c.selection.y1 <= H && c.selection.x0 >= 0, "dialog: panning stays inside the image" );
+      c.maxZoom = capZoom;
+      c.zoomAbout( new Point( W/2, H/2 ), 100 );
+      d.previewTimer.stop();
+      check( c.selection == null || c.selection.width >= c.width/c.maxZoom - 1e-6, "dialog: zoom is capped at 4:1" );
+      c.setSelection( null );
+      d.previewTimer.stop();
+      check( c.selection == null, "dialog: double-click / Whole image shows the full image" );
       d.onReturn( 1 );
-      check( !d.previewTimer.isRunning && !d.isPoppedOut(), "dialog: closing the dialog stops the timer and the window" );
-      d.previewWindow = null;
+      check( !d.previewTimer.isRunning && d.previewCache.windows.length == 0, "dialog: closing the dialog stops the timer and drops the cache" );
 
       d.livePreview_CheckBox.onCheck( false );
       d.schedulePreview();

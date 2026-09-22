@@ -663,59 +663,131 @@ function buildForaxx( params, options = {} )
 }
 
 /*
- * Renders a preview of the result: the real build, run on downsampled
- * copies of the selected images in hidden windows, returned as a Bitmap no
- * larger than maxSize on its longest side. Every window it creates is
- * closed before returning, so nothing is left in the workspace.
- *
- * Returns { bitmap: Bitmap, scale: Number, width: int, height: int }.
+ * Downsampled, optionally cropped copies of the selected images in hidden
+ * windows, kept between previews so that a parameter change does not copy
+ * and resample the full-size sources again. Rebuilt when the views, the
+ * selection or the scale change. Call dispose() when done.
  */
-function renderPreview( params, maxSize = 480 )
+class PreviewSourceCache
+{
+   constructor()
+   {
+      this.key = null;
+      this.windows = [];
+      this.views = {};
+   }
+
+   /*
+    * Returns { sii, ha, oiii, siiStars, haStars, oiiiStars } small views for
+    * the given selection (a Rect in image coordinates, or null for the whole
+    * image) and scale (0 < scale <= 1).
+    */
+   sources( params, selection, scale )
+   {
+      let keys = [ "ha", "oiii" ];
+      if ( params.threeChannels )
+         keys.push( "sii" );
+      if ( params.createStars )
+      {
+         keys.push( "haStars", "oiiiStars" );
+         if ( params.threeChannels )
+            keys.push( "siiStars" );
+      }
+      let sel = selection ? [ selection.x0, selection.y0, selection.x1, selection.y1 ] : null;
+      let key = JSON.stringify( [ keys.map( k => params[k].fullId ), sel, scale ] );
+      if ( key != this.key )
+      {
+         this.dispose();
+         for ( let k of keys )
+            this.views[k] = this.smallCopy( params[k], k, selection, scale );
+         this.key = key;
+      }
+      return this.views;
+   }
+
+   smallCopy( view, tag, selection, scale )
+   {
+      let img = new Image( view.image );
+      if ( selection )
+         img.cropTo( selection.x0, selection.y0, selection.x1, selection.y1 );
+      if ( scale < 1 )
+         img.resample( scale );
+      let window = new ImageWindow( img.width, img.height, img.numberOfChannels, 32, true, img.isColor,
+                                    uniqueViewId( "fpv_" + tag ) );
+      this.windows.push( window );
+      window.mainView.beginProcess( UndoFlag.NoSwapFile );
+      window.mainView.image.assign( img );
+      window.mainView.endProcess();
+      img.free();
+      return window.mainView;
+   }
+
+   dispose()
+   {
+      for ( let w of this.windows )
+         try { w.forceClose(); } catch ( e ) {}
+      this.windows = [];
+      this.views = {};
+      this.key = null;
+   }
+}
+
+/*
+ * Renders a preview of the result: the real build, run on downsampled
+ * copies of the selected images in hidden windows, returned as a Bitmap.
+ * Every window it creates is closed before returning, except the cached
+ * source copies when a cache is supplied.
+ *
+ * options: a number (the longest side of the preview) or an object
+ *   { width, height }   the space the preview must fit in, in pixels
+ *   selection           a Rect in image coordinates to preview, or null
+ *   cache               a PreviewSourceCache to reuse source copies
+ *
+ * The render scale is min( 1, width/selection.width, height/selection.height ):
+ * a small selection is rendered at 1:1 and left to the caller to enlarge.
+ *
+ * Returns { bitmap, scale, width, height, selection }.
+ */
+function renderPreview( params, options = 480 )
 {
    let error = params.validate();
    if ( error )
       throw new Error( error );
 
    let ref = params.ha.image;
-   let scale = Math.min( 1, maxSize/Math.max( ref.width, ref.height ) );
-   let created = [];   // temporary ImageWindows to close
-
-   let smallCopy = ( view, tag ) =>
+   let full = new Rect( 0, 0, ref.width, ref.height );
+   let selection = null, fitW, fitH;
+   if ( typeof options == "number" )
+      fitW = fitH = options;
+   else
    {
-      let src = view.image;
-      let img = new Image( src );
-      if ( scale < 1 )
-         img.resample( scale );
-      let window = new ImageWindow( img.width, img.height, img.numberOfChannels, 32, true, img.isColor,
-                                    uniqueViewId( "fpv_" + tag ) );
-      created.push( window );
-      window.mainView.beginProcess( UndoFlag.NoSwapFile );
-      window.mainView.image.assign( img );
-      window.mainView.endProcess();
-      img.free();
-      return window.mainView;
-   };
+      fitW = options.width;
+      fitH = options.height;
+      if ( options.selection )
+      {
+         selection = new Rect( Math.max( 0, Math.floor( options.selection.x0 ) ), Math.max( 0, Math.floor( options.selection.y0 ) ),
+                               Math.min( ref.width, Math.ceil( options.selection.x1 ) ), Math.min( ref.height, Math.ceil( options.selection.y1 ) ) );
+         if ( selection.width < 2 || selection.height < 2 )
+            selection = null;
+      }
+   }
+   let region = selection || full;
+   let scale = Math.min( 1, fitW/region.width, fitH/region.height );
 
+   let cache = (typeof options == "object" && options.cache) ? options.cache : new PreviewSourceCache;
+   let ownCache = !(typeof options == "object" && options.cache);
+   let created = [];
    let p = new ForaxxParameters;
    try
    {
+      let small = cache.sources( params, selection, scale );
       for ( let [key, type] of ForaxxParameters.persisted )
          p[key] = params[key];
       p.createFactorImages = false;
       p.createRatioMasks = false;
       p.outputId = uniqueViewId( "fpv_result" );
-
-      p.ha = smallCopy( params.ha, "ha" );
-      p.oiii = smallCopy( params.oiii, "oiii" );
-      if ( params.threeChannels )
-         p.sii = smallCopy( params.sii, "sii" );
-      if ( params.createStars )
-      {
-         p.haStars = smallCopy( params.haStars, "ha_stars" );
-         p.oiiiStars = smallCopy( params.oiiiStars, "oiii_stars" );
-         if ( params.threeChannels )
-            p.siiStars = smallCopy( params.siiStars, "sii_stars" );
-      }
+      for ( let k in small )
+         p[k] = small[k];
 
       let r = buildForaxx( p, { show: false } );
       for ( let v of [ r.foraxx, r.stars, r.combined ].concat( r.factors, r.masks ) )
@@ -724,11 +796,13 @@ function renderPreview( params, maxSize = 480 )
 
       let shown = r.combined || r.foraxx;
       let bitmap = shown.image.render( 1, false/*transparency*/, true/*fast*/ );
-      return { bitmap, scale, width: bitmap.width, height: bitmap.height };
+      return { bitmap, scale, width: bitmap.width, height: bitmap.height, selection: region };
    }
    finally
    {
       for ( let w of created )
          try { w.forceClose(); } catch ( e ) {}
+      if ( ownCache )
+         cache.dispose();
    }
 }

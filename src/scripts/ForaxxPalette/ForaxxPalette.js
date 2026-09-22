@@ -36,6 +36,13 @@
  * 1.01    2023-01-14 Hopefully fixed the web host bugs.
  * 1.15    2023-08-19 PI 1.8.9-2 ready.
  * 1.16    2024-12-23 PI 1.9 ready.
+ * 2.4.0   2026-09-22 The preview is a pane inside a resizable dialog, as
+ *                    in the Cosmic Photons scripts, and the pop-out
+ *                    window is gone. Drag a rectangle to zoom, Ctrl-drag
+ *                    to pan, wheel to zoom about the pointer, double-click
+ *                    for the whole image. Only the region shown is built,
+ *                    and the downsampled sources are kept between
+ *                    previews.
  * 2.3.2   2026-09-22 Fix: the pop-out window blocked the dialog (it was
  *                    opened window-modal) and was small. It is now shown
  *                    non-modally, 900x640 by default.
@@ -92,7 +99,7 @@
 CoreApplication.ensureMinimumVersion( 1, 9, 4 );
 
 const TITLE = "Foraxx Palette Utility";
-const VERSION = "2.3.2";
+const VERSION = "2.4.0";
 const WEBSITE = "https://thecoldestnights.com/2020/06/pixinsight-dynamic-narrowband-combinations-with-pixelmath/";
 
 #include "lib/ForaxxEngine.js"
