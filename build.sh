@@ -31,19 +31,26 @@ cp -r "$here/src/scripts/ForaxxPalette" "$stage/src/scripts/"
 cp -r "$here/rsc/icons/script/ForaxxPalette" "$stage/rsc/icons/script/"
 cp "$here/LICENSE" "$here/NOTICE" "$stage/src/scripts/ForaxxPalette/"
 
-# Code signing: with PIXINSIGHT_SIGN=1 and a secure keys file, sign the entry
-# script with a headless PixInsight and ship the .xsgn file. The key comes
-# from $PIXINSIGHT_XSSK (+ $PIXINSIGHT_XSSK_PASSWORD_FILE), defaulting to
-# ~/.pixinsight-signing/theatrus.xssk.
+# Code signing: sign the entry script with a headless PixInsight and ship the
+# .xsgn file. The key comes from $PIXINSIGHT_XSSK (+
+# $PIXINSIGHT_XSSK_PASSWORD_FILE), defaulting to
+# ~/.pixinsight-signing/theatrus.xssk. On by default; PIXINSIGHT_SIGN=0 builds
+# an unsigned package.
 #
-# OFF BY DEFAULT. Tested 2026-09-21: PixInsight 1.9.4 refuses to run a script
-# whose signature comes from a developer id that is not certified, while an
-# unsigned script runs with a warning. Turn this on only once the theatrus id
-# is a Certified PixInsight Developer identity.
+# The theatrus id is a Certified PixInsight Developer from the 2026-09-27
+# developer list (1.9.5 build 1706). PixInsight refuses to run a script signed
+# by an id missing from its list, so users on an older list must run Check for
+# Updates; an unsigned script runs everywhere with a warning.
 xssk="${PIXINSIGHT_XSSK:-$HOME/.pixinsight-signing/theatrus.xssk}"
 xssk_pw="${PIXINSIGHT_XSSK_PASSWORD_FILE:-${xssk}.password}"
 pi="${PIXINSIGHT_DIR:-$HOME/PixInsight}"
-if [ "${PIXINSIGHT_SIGN:-0}" = "1" ] && [ -f "$xssk" ] && [ -f "$xssk_pw" ] && [ -x "$pi/bin/PixInsight" ]; then
+if [ "${PIXINSIGHT_SIGN:-1}" = "1" ]; then
+   for f in "$xssk" "$xssk_pw" "$pi/bin/PixInsight"; do
+      if [ ! -e "$f" ]; then
+         echo "code signing needs $f (set PIXINSIGHT_SIGN=0 for an unsigned build)" >&2
+         exit 1
+      fi
+   done
    # Only the entry point carries a signature, as PixInsight's own packages
    # do: a script signature needs the script id from #feature-id, and the
    # signed source is the preprocessed script, includes and all.
@@ -79,7 +86,7 @@ PY
    grep '^signed' "$stage/sign-result.txt"
    rm -f "$stage/sign-result.txt" "$stage/sign-pi.log"
 else
-   echo "code signing skipped (set PIXINSIGHT_SIGN=1 once the developer id is certified)"
+   echo "code signing skipped (PIXINSIGHT_SIGN=0); the package is unsigned"
 fi
 
 (

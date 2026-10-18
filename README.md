@@ -132,9 +132,17 @@ writes `dist/` with the new package zip, the legacy zip and a standalone
 `packages/` of
 [theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository),
 update its `packages.json`, and push; `dist/updates.xri` is only needed if you
-host the package somewhere on its own. The scripts are not code-signed; PixInsight runs unsigned
-scripts with a console warning. Signing is optional for scripts and can be
-done with Script > Development > SigningKeys and CodeSign.
+host the package somewhere on its own.
+
+`build.sh` signs the entry script as the Certified PixInsight Developer
+`theatrus`, using a headless PixInsight at `$PIXINSIGHT_DIR` (default
+`~/PixInsight`) and the key at `$PIXINSIGHT_XSSK` (default
+`~/.pixinsight-signing/theatrus.xssk`, with its password in a `.password` file
+beside it). Without the key, build with `PIXINSIGHT_SIGN=0` to get an unsigned
+package, which PixInsight runs with a console warning. PixInsight refuses a
+signed script when its developer list predates the signing id; the `theatrus`
+id is listed from the 2026-09-27 list on, so users on an older one should run
+Resources > Updates > Check for Updates.
 
 ## Porting notes
 
