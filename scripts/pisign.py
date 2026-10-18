@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""PixInsight script signatures (.xsgn) without PixInsight.
+"""PixInsight script (.xsgn) and XML (.xri) signatures without PixInsight.
 
 Reproduces the way PixInsight 1.9.5 (build 1706) canonicalizes and signs
-JavaScript sources, as worked out in docs/script-signing.md, and checks it
-against signatures PixInsight made. Standard library only.
+JavaScript sources and XML documents, as worked out in
+docs/script-signing.md, and checks it against signatures PixInsight made.
+Standard library only. Files ending in .xml or .xri are XML documents, whose
+signature is embedded; anything else is a script with a .xsgn beside it.
 
   pisign.py canonical FILE              print the canonical text that is hashed
-  pisign.py verify FILE [FILE...]       check FILE's .xsgn against --public-key
-  pisign.py sign FILE --key-file KEY    write FILE's .xsgn
+  pisign.py verify FILE [FILE...]       check FILE's signature against --public-key
+  pisign.py sign FILE --key-file KEY    write FILE's .xsgn, or rewrite an XML
+                                        document with its signature
 
 Options:
   --include-dir DIR      also look here for "quoted" includes (repeatable)
@@ -321,6 +324,299 @@ def sign(path, private, developer_id, entitlements=(), timestamp=None, include_d
     return signature_path(path)
 
 
+# XML documents (update repository .xri files). The signature covers the root
+# element as PCL's XML classes write it without formatting; signing rewrites
+# the whole document with three-space indentation and appends a Signature
+# element after the root.
+
+_XML_SPACE = " \t\r\n"
+
+
+def _xml_decode(s):
+    import html.entities
+    out, i = [], 0
+    while True:
+        a = s.find("&", i)
+        if a < 0:
+            out.append(s[i:])
+            return "".join(out)
+        b = s.find(";", a + 1)
+        if b < 0:
+            out.append(s[i:])
+            return "".join(out)
+        out.append(s[i:a])
+        ref = s[a + 1:b]
+        if ref.startswith(("#x", "#X")):
+            out.append(chr(int(ref[2:], 16)))
+        elif ref.startswith("#"):
+            out.append(chr(int(ref[1:], 10)))
+        elif ref in ("amp", "lt", "gt", "quot", "apos"):
+            out.append({"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}[ref])
+        elif ref + ";" in html.entities.html5:
+            out.append(html.entities.html5[ref + ";"])
+        else:
+            raise ValueError(f"unknown XML entity &{ref};")
+        i = b + 1
+
+
+def _xml_encode(s, apos=True):
+    s = s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+    return s.replace("'", "&apos;") if apos else s
+
+
+def _xml_collapse(s):
+    return re.sub(r"[ \t\r\n]+", " ", s)
+
+
+def _xml_attributes(params):
+    attrs, i = [], 0
+    while True:
+        while i < len(params) and params[i] in _XML_SPACE:
+            i += 1
+        if i == len(params):
+            return attrs
+        j = i
+        while j < len(params) and params[j] != "=" and params[j] not in _XML_SPACE:
+            j += 1
+        name = params[i:j]
+        k = j
+        while k < len(params) and params[k] in _XML_SPACE:
+            k += 1
+        if k == len(params) or params[k] != "=":
+            raise ValueError("XML attribute: expected '='")
+        k += 1
+        while k < len(params) and params[k] in _XML_SPACE:
+            k += 1
+        if k == len(params) or params[k] not in "\"'":
+            raise ValueError("XML attribute: expected a quote")
+        q = params[k]
+        k += 1
+        while k < len(params) and params[k] in _XML_SPACE:
+            k += 1
+        e = params.find(q, k)
+        if e < 0:
+            raise ValueError("XML attribute: unmatched quote")
+        value = _xml_collapse(_xml_decode(params[k:e].rstrip(_XML_SPACE)))
+        for n, (an, _) in enumerate(attrs):
+            if an == name:
+                attrs[n] = (name, value)
+                break
+        else:
+            attrs.append((name, value))
+        i = e + 1
+
+
+def _xml_tag(text, j):
+    """PCL's XMLTag: returns (name, params, next, start, end, pi)."""
+    while text[j] in _XML_SPACE:
+        j += 1
+    start = end = pi = False
+    if text[j] == "/":
+        end = True
+        j += 1
+    else:
+        start = True
+        if text[j] == "?":
+            pi = end = True
+            j += 1
+    k, depth = j, 1
+    while k < len(text):
+        if text[k] == ">":
+            depth -= 1
+            if depth == 0:
+                break
+        elif text[k] == "<":
+            depth += 1
+        k += 1
+    if k == len(text):
+        raise ValueError("XML: unmatched '<'")
+    nxt = k + 1
+    if pi:
+        k -= 1
+    elif text[k - 1] == "/":
+        end = True
+        k -= 1
+    body = text[j:k]
+    m = re.match(r"[^ \t\r\n]*", body)
+    name = m.group(0)
+    params = body[m.end():].strip(_XML_SPACE)
+    return name, params, nxt, start, end, pi
+
+
+def parse_xml(text):
+    """Top-level nodes of a document, parsed as PCL's XMLDocument does.
+
+    Nodes are dicts: element (name, attrs, children), text, comment, cdata,
+    pi (target, data) and unknown (name, data).
+    """
+    nodes, stack, i = [], [], 0
+    while True:
+        j = text.find("<", i)
+        if j < 0:
+            j = len(text)
+        seg = text[i:j]
+        if seg:
+            blank = all(c in _XML_SPACE for c in seg)
+            if not stack:
+                if not blank:
+                    raise ValueError("XML: stray characters outside markup")
+            elif not blank or any(c["type"] == "text" for c in stack[-1]["children"]):
+                stack[-1]["children"].append({"type": "text", "text": _xml_decode(seg)})
+        if j == len(text):
+            break
+        j += 1
+        while j < len(text) and text[j] in _XML_SPACE:
+            j += 1
+        parent = stack[-1]["children"] if stack else nodes
+        if text.startswith("!--", j):
+            k = text.find("-->", j + 3)
+            if k < 0:
+                raise ValueError("XML: unmatched comment")
+            parent.append({"type": "comment", "text": text[j + 3:k]})
+            i = k + 3
+        elif text.startswith("![CDATA[", j):
+            k = text.find("]]>", j + 8)
+            if k < 0 or not stack:
+                raise ValueError("XML: bad CDATA section")
+            parent.append({"type": "cdata", "text": text[j + 8:k]})
+            i = k + 3
+        elif text.startswith("!", j):
+            name, params, i, *_ = _xml_tag(text, j + 1)
+            if name != "DOCTYPE":
+                parent.append({"type": "unknown", "name": name, "data": params})
+        else:
+            name, params, i, start, end, pi = _xml_tag(text, j)
+            if pi:
+                if name != "xml":
+                    parent.append({"type": "pi", "name": name, "data": params})
+            elif start:
+                el = {"type": "element", "name": name, "attrs": _xml_attributes(params), "children": []}
+                parent.append(el)
+                if not end:
+                    stack.append(el)
+            else:
+                if not stack or stack[-1]["name"] != name:
+                    raise ValueError(f"XML: unexpected end tag </{name}>")
+                stack.pop()
+    if stack:
+        raise ValueError(f"XML: missing </{stack[-1]['name']}>")
+    return nodes
+
+
+def _xml_serialize(node, out, auto, level):
+    t = node["type"]
+    pad = " " * (3 * level) if auto else ""
+    if t == "text":
+        out.append(_xml_encode(node["text"]))
+    elif t == "cdata":
+        out.append(pad + "<![CDATA[" + node["text"].replace("]]>", "") + "]]>")
+    elif t == "pi":
+        out.append(pad + "<?" + node["name"] + " " + node["data"].replace("?>", "") + "?>")
+    elif t == "comment":
+        c = node["text"].replace("--", "")
+        out.append(pad + "<!--" + c + ("->" if c.endswith("-") else "-->"))
+    elif t == "unknown":
+        out.append(pad + "<!" + node["name"] + " " + node["data"] + ">")
+    else:
+        out.append(pad + "<" + node["name"])
+        if node["attrs"]:
+            out.append(" " + " ".join(f'{n}="{_xml_encode(v, False)}"' for n, v in node["attrs"]))
+        kids = node["children"]
+        if not kids:
+            out.append("/>")
+            return
+        out.append(">")
+        # A line break goes between two nodes unless either one is text.
+        prev = None
+        for kid in kids:
+            br = auto and kid["type"] != "text" and (prev is None or prev["type"] != "text")
+            if br:
+                out.append("\n")
+            _xml_serialize(kid, out, br, level + 1)
+            prev = kid
+        if auto and kids[-1]["type"] != "text":
+            out.append("\n" + " " * (3 * level))
+        out.append("</" + node["name"] + ">")
+
+
+def xml_root(nodes):
+    return next(n for n in nodes if n["type"] == "element")
+
+
+def _xml_normalized(node):
+    # The signed form is parsed as with PCL's IgnoreComments and
+    # NormalizeTextSpaces: no comments, text trimmed with runs of space
+    # collapsed to one.
+    kids = []
+    for c in node["children"]:
+        if c["type"] == "comment":
+            continue
+        if c["type"] == "text":
+            c = {"type": "text", "text": _xml_collapse(c["text"].strip(_XML_SPACE))}
+        elif c["type"] == "element":
+            c = _xml_normalized(c)
+        kids.append(c)
+    return dict(node, children=kids)
+
+
+def xml_canonical(nodes):
+    out = []
+    _xml_serialize(_xml_normalized(xml_root(nodes)), out, False, 0)
+    return "".join(out)
+
+
+def xml_document(nodes):
+    out = ['<?xml version="1.0" encoding="UTF-8"?>\n']
+    for n in nodes:
+        _xml_serialize(n, out, True, 0)
+        out.append("\n")
+    return "".join(out)
+
+
+def _xml_load(path):
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    return parse_xml(raw.decode("utf-8"))
+
+
+def _xml_signature_node(nodes):
+    root = xml_root(nodes)
+    sigs = [n for n in nodes if n["type"] == "element" and n["name"] == "Signature" and n is not root]
+    return sigs[-1] if sigs else None
+
+
+def verify_xml(path, public):
+    nodes = _xml_load(path)
+    s = _xml_signature_node(nodes)
+    if s is None:
+        return False
+    a = dict(s["attrs"])
+    sig = base64.b64decode(re.sub(r"\s", "", "".join(c["text"] for c in s["children"] if c["type"] == "text")))
+    return ed25519_verify(public, digest(xml_canonical(nodes), a.get("developerId", ""), a.get("timestamp", ""), []), sig)
+
+
+def sign_xml(path, private, developer_id, timestamp=None):
+    nodes = _xml_load(path)
+    root = xml_root(nodes)
+    nodes = [n for n in nodes if not (n["type"] == "element" and n["name"] == "Signature" and n is not root)]
+    if timestamp is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+    sig = ed25519_sign(private, public_key(private), digest(xml_canonical(nodes), developer_id, timestamp, []))
+    nodes.append({"type": "element", "name": "Signature",
+                  "attrs": [("developerId", developer_id), ("timestamp", timestamp), ("encoding", "Base64")],
+                  "children": [{"type": "text", "text": base64.b64encode(sig).decode()}]})
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(xml_document(nodes))
+    return path
+
+
+def _is_xml(path):
+    return os.path.splitext(path)[1].lower() in (".xml", ".xri")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("command", choices=["canonical", "verify", "sign"])
@@ -335,13 +631,13 @@ def main():
 
     if a.command == "canonical":
         for f in a.files:
-            sys.stdout.write(canonical_text(f, a.include_dir))
+            sys.stdout.write(xml_canonical(_xml_load(f)) + "\n" if _is_xml(f) else canonical_text(f, a.include_dir))
         return 0
     if a.command == "verify":
         public = base64.b64decode(a.public_key)
         bad = 0
         for f in a.files:
-            ok = verify(f, public, a.include_dir)
+            ok = verify_xml(f, public) if _is_xml(f) else verify(f, public, a.include_dir)
             print(f"{'ok  ' if ok else 'BAD '} {f}")
             bad += not ok
         return 1 if bad else 0
@@ -352,7 +648,10 @@ def main():
     if len(private) != 64:
         ap.error("--key-file must hold a 64-byte private key in Base64")
     for f in a.files:
-        print("signed", sign(f, private, a.developer_id, a.entitlement, a.timestamp, a.include_dir))
+        if _is_xml(f):
+            print("signed", sign_xml(f, private, a.developer_id, a.timestamp))
+        else:
+            print("signed", sign(f, private, a.developer_id, a.entitlement, a.timestamp, a.include_dir))
     return 0
 
 

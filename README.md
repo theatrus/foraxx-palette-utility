@@ -147,19 +147,24 @@ commits, tags this repository `v<version>` and pushes both. `--dry-run` stops
 before committing.
 
 `build.sh` signs the entry script as the Certified PixInsight Developer
-`theatrus`, using a headless PixInsight at `$PIXINSIGHT_DIR` (default
-`~/PixInsight`) and the key at `$PIXINSIGHT_XSSK` (default
-`~/.pixinsight-signing/theatrus.xssk`, with its password in a `.password` file
-beside it). Without the key, build with `PIXINSIGHT_SIGN=0` to get an unsigned
-package, which PixInsight runs with a console warning. PixInsight refuses a
-signed script when its developer list predates the signing id; the `theatrus`
-id is listed from the 2026-09-27 list on, so users on an older one should run
-Resources > Updates > Check for Updates.
+`theatrus`. With the raw key at `$PIXINSIGHT_ED25519_KEY` (default
+`~/.pixinsight-signing/theatrus.ed25519`) it signs with `scripts/pisign.py`
+and needs no PixInsight. Otherwise it runs a headless PixInsight at
+`$PIXINSIGHT_DIR` (default `~/PixInsight`) with the key file at
+`$PIXINSIGHT_XSSK` (default `~/.pixinsight-signing/theatrus.xssk`, password
+in a `.password` file beside it). `scripts/export-signing-key.sh` makes the
+raw key from the `.xssk` once. Without either, build with `PIXINSIGHT_SIGN=0`
+to get an unsigned package, which PixInsight runs with a console warning.
+PixInsight refuses a signed script when its developer list predates the
+signing id; the `theatrus` id is listed from the 2026-09-27 list on, so users
+on an older one should run Resources > Updates > Check for Updates.
 
-`scripts/pisign.py` checks and makes the same signatures without PixInsight
-(`pisign.py verify <script>`); [docs/script-signing.md](docs/script-signing.md)
-describes the format. `python3 test/pisign-test.py` checks it against
-signatures PixInsight made, kept in `test/signing/`.
+`scripts/pisign.py` makes and checks PixInsight script signatures (`.xsgn`)
+and XML signatures (`updates.xri`) without PixInsight, for example
+`pisign.py verify <script or .xri>`;
+[docs/script-signing.md](docs/script-signing.md) describes both formats.
+`python3 test/pisign-test.py` checks it against signatures PixInsight made,
+kept in `test/signing/` and `test/signing-xml/`.
 
 ## Porting notes
 

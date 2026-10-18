@@ -4,3 +4,4 @@ dist/
 __MACOSX/
 *~
 !test/signing/*.xsgn
+__pycache__/

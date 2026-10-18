@@ -1,1 +1,2 @@
 test/signing/** -text
+test/signing-xml/** -text

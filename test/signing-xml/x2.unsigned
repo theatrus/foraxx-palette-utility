@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri   version="1.0"  >
+   <description>
+      <p>
+         Two   spaces   and
+         a line break.
+      </p>
+   </description>
+   <platform os="all"    arch="noarch"
+             version="1.9.4:1.9.99">
+      <package fileName="FPU.zip" sha1="abc" type="script" releaseDate="20261018"/>
+   </platform>
+</xri>

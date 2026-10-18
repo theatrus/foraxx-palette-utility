@@ -1,7 +1,8 @@
-# PixInsight script signatures
+# PixInsight script and XML signatures
 
-How PixInsight 1.9.5 (build 1706, Lockhart) signs a JavaScript script, worked
-out so we can sign without running PixInsight. `scripts/pisign.py` implements
+How PixInsight 1.9.5 (build 1706, Lockhart) signs a JavaScript script and an
+XML document such as an update repository's `updates.xri`, worked out so we
+can sign without running PixInsight. `scripts/pisign.py` implements
 it; `test/pisign-test.py` checks it against signatures PixInsight made.
 
 PixInsight's own description is in its local docs at
@@ -23,7 +24,9 @@ is exactly right.
   13 have no script id, so PixInsight refuses them).
 - The real Foraxx package.
 
-The final model matches all 186 signatures. The bundled scripts were copies on
+The final model matches all 186 signatures. With the real key, `pisign.py`
+reproduces PixInsight's signatures byte for byte (all 46 fixtures), and
+PixInsight runs a script `pisign.py` signed and refuses it once changed. The bundled scripts were copies on
 the scratchpad only; nothing from them is in this repository.
 
 ## Signature file
@@ -117,6 +120,45 @@ All fail with the bare error `undefined`:
 - a regex literal containing `//`, such as `/\/\//g` (pisign.py does not
   catch this case).
 
+## XML documents
+
+`Security.generateXMLSignature` (and the core's `--sign-xml-file`) signs the
+whole document in place:
+
+```
+message = canonical_root + "\n" + developerId + "\n" + timestamp
+digest  = SHA-512(UTF-8(message))
+sig     = Ed25519_sign(private, public, digest)
+```
+
+`canonical_root` is the root element written by PCL's XML classes
+(`src/pcl/XML.cpp`) with no formatting, after parsing as with the
+`IgnoreComments` and `NormalizeTextSpaces` options:
+
+- no comments;
+- text trimmed, runs of spaces, tabs and line breaks collapsed to one space,
+  and text that was only white space between elements dropped;
+- attributes as `name="value"` separated by one space, values trimmed and
+  collapsed the same way;
+- `&`, `"`, `<`, `>` escaped everywhere, `'` escaped as `&apos;` in text but
+  not in attribute values;
+- an element with no children as `<name/>`; CDATA, processing instructions
+  and other `<!...>` nodes as written.
+
+PixInsight then rewrites the file: the XML declaration, each top-level node on
+its own line (comments kept), elements indented by three spaces with a line
+break between two siblings unless either is text, text as it was (escaped as
+above), any earlier top-level `Signature` element removed, and a new one last:
+
+```xml
+<Signature developerId="theatrus" timestamp="2026-10-18T22:00:34.710Z" encoding="Base64">...</Signature>
+```
+
+`pisign.py` reproduces both the signature and the rewritten file byte for
+byte for every document in `test/signing-xml/`, and PixInsight's
+`Security.getXMLSignature` reports a document signed by `pisign.py` as
+valid (and a changed copy as not valid).
+
 ## Keys
 
 - Public key: 32 bytes. Ours is `ZywW3LxwYgSAblgrEEopPlYCaht19NqhWs0PqtdrDV0=`.
@@ -126,7 +168,10 @@ All fail with the bare error `undefined`:
   without the key leaving it.
 - The `.xssk` file holds both, encrypted with what the docs call "a custom
   algorithm based on AES-256". We have not reproduced it, so `pisign.py sign`
-  takes the raw 64-byte key instead.
+  takes the raw 64-byte key instead. `scripts/export-signing-key.sh` gets it
+  out of the `.xssk` once, with a headless PixInsight, into
+  `~/.pixinsight-signing/theatrus.ed25519` (mode 600); `build.sh` uses that
+  file when it exists.
 - The `.xcdev` developer list stores public keys encrypted too, so it cannot
   be used to verify other developers' signatures; search it for the id.
 
@@ -137,8 +182,6 @@ All fail with the bare error `undefined`:
 - `#include <...>` pointing outside `include/pjsr`.
 - `#include` inside a block comment.
 - Files that are not UTF-8.
-- Signing XML (`.xri`) and modules, which the docs describe differently.
-- A signature made by `pisign.py sign` with the real key, run in
-  PixInsight. It should work, since Ed25519 is deterministic and the message
-  matches PixInsight's in every case above, but it needs the raw private key
-  outside PixInsight first.
+- Module signatures.
+- XML named entities beyond the five basic ones and numeric references
+  (`pisign.py` uses Python's HTML5 table; PCL has its own).

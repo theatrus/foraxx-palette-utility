@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0">
+   <description>
+      <p>
+         Foraxx Palette Utility - For the creation of Foraxx Palette Narrowband Images.
+      </p>
+      <p>
+         Original script by Paul Hancock, Paulyman Astro.
+         Copyright (c) 2023-2024 Paul Hancock. All Rights Reserved.
+      </p>
+   </description>
+   <platform os="all" arch="noarch" version="1.9.4:1.9.99">
+      <package fileName="FPU_202609220313.zip" sha1="523e6fe5c119c968d483e3c5160f2574eb78e52f" type="script" releaseDate="20260922">
+         <title>
+            Foraxx Palette Utility - Version 2.4.0
+         </title>
+         <description>
+            <p>
+               Rewritten for the V8 JavaScript runtime in PixInsight 1.9.4.
+               Same Foraxx expressions and curves as before.
+            </p>
+            <p>
+               Original script by Paul Hancock, Paulyman Astro.
+               Copyright (c) 2023-2024 Paul Hancock. Copyright (c) 2026 Yann Ramin.
+               All Rights Reserved.
+            </p>
+         </description>
+      </package>
+   </platform>
+   <platform os="all" arch="noarch" version="1.8.9-3:1.9.3">
+      <package fileName="FPU_202412230653.zip" sha1="cbd9be054dd4957c58a21ba519ce8776f793e061" type="script" releaseDate="20241223">
+         <title>
+            Foraxx Palette Utility - Version 1.16
+         </title>
+         <description>
+            <p>
+               1.9 ready. Legacy SpiderMonkey version for PixInsight 1.8.9-3 to 1.9.3.
+            </p>
+            <p>
+               Copyright (c) 2024 Paul Hancock. All Rights Reserved.
+            </p>
+         </description>
+      </package>
+   </platform>
+</xri>
+<Signature developerId="theatrus" timestamp="2026-10-18T22:00:34.710Z" encoding="Base64">TAiBz+8MjzutZI0Fg9jcQZsjDyEq4y9W34gsetcXExkYhcWRLSTOP04LV2OI/YfbU/9mp//dQ6hUtSg9b7AtCQ==</Signature>

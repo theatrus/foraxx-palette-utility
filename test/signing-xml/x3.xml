@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- comment before root -->
+<xri version="1.0">
+   <!-- comment inside -->
+   <t a="x &amp; y" b="single &quot;q&quot;" c="it's">5 &lt; 6 &amp; café &quot;quoted&quot; it&apos;s &gt;</t>
+   <u>  lead and trail  </u>
+</xri>
+<Signature developerId="theatrus" timestamp="2026-10-18T22:00:34.710Z" encoding="Base64">belJF1ofFyCxHsWdzMf6gLhht6pNks0UcFyj+J/V3GwwzSLc9KteGozQHux9/NbudQdFEExoxHB2xJBjA5WZCg==</Signature>

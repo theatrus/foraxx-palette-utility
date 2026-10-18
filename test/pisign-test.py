@@ -2,7 +2,8 @@
 """Checks scripts/pisign.py against signatures made by PixInsight.
 
 test/signing/ holds small scripts, each probing one canonicalization rule,
-signed by PixInsight 1.9.5 build 1706 with the theatrus key. Every one must
+signed by PixInsight 1.9.5 build 1706 with the theatrus key, and
+test/signing-xml/ holds XML documents it signed. Every one must
 verify. Signing is checked with the RFC 8032 test vector and a round trip
 with a throwaway key, reusing each fixture's timestamp and entitlements.
 
@@ -64,6 +65,35 @@ with tempfile.TemporaryDirectory() as tmp:
         mine = pisign.read_signature(pisign.signature_path(f))
         same = all(mine[k] == orig[k] for k in ("scriptId", "developerId", "timestamp", "entitlements"))
         check(same and pisign.verify(f, key_pub), f"sign and verify round trip: {os.path.basename(f)}")
+
+# XML: test/signing-xml/ holds documents signed by PixInsight (.xml, .xri)
+# beside the originals it was given (.unsigned).
+xml_dir = os.path.join(here, "signing-xml")
+signed_docs = sorted(glob.glob(os.path.join(xml_dir, "*.xml")) + glob.glob(os.path.join(xml_dir, "*.xri")))
+for f in signed_docs:
+    check(pisign.verify_xml(f, theatrus), f"PixInsight XML signature verifies: {os.path.basename(f)}")
+
+with tempfile.TemporaryDirectory() as tmp:
+    for f in signed_docs:
+        name = os.path.basename(f)
+        with open(f, encoding="utf-8") as fh:
+            theirs = fh.read()
+        sig_line = theirs.rstrip("\n").split("\n")[-1]
+        stamp = sig_line.split('timestamp="')[1].split('"')[0]
+        mine = os.path.join(tmp, name)
+        shutil.copy(os.path.splitext(f)[0] + ".unsigned", mine)
+        pisign.sign_xml(mine, key, "theatrus", stamp)
+        with open(mine, encoding="utf-8") as fh:
+            ours = fh.read()
+        body = lambda s: s.rstrip("\n").rsplit("\n", 1)[0]
+        check(body(ours) == body(theirs) and pisign.verify_xml(mine, key_pub),
+              f"XML rewrite matches PixInsight's and round trips: {name}")
+    tampered = os.path.join(tmp, "tampered.xri")
+    with open(os.path.join(xml_dir, "updates.xri"), encoding="utf-8") as fh:
+        doc = fh.read()
+    with open(tampered, "w", encoding="utf-8") as fh:
+        fh.write(doc.replace('version="1.9.4:1.9.99"', 'version="1.9.4:1.9.98"'))
+    check(not pisign.verify_xml(tampered, theatrus), "a changed XML document fails")
 
 print("RESULT:", "PASS" if failures == 0 else f"FAIL ({failures})")
 sys.exit(1 if failures else 0)

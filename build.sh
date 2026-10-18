@@ -31,30 +31,36 @@ cp -r "$here/src/scripts/ForaxxPalette" "$stage/src/scripts/"
 cp -r "$here/rsc/icons/script/ForaxxPalette" "$stage/rsc/icons/script/"
 cp "$here/LICENSE" "$here/NOTICE" "$stage/src/scripts/ForaxxPalette/"
 
-# Code signing: sign the entry script with a headless PixInsight and ship the
-# .xsgn file. The key comes from $PIXINSIGHT_XSSK (+
-# $PIXINSIGHT_XSSK_PASSWORD_FILE), defaulting to
-# ~/.pixinsight-signing/theatrus.xssk. On by default; PIXINSIGHT_SIGN=0 builds
-# an unsigned package.
+# Code signing: sign the entry script and ship the .xsgn file. With the raw
+# Ed25519 key ($PIXINSIGHT_ED25519_KEY, default
+# ~/.pixinsight-signing/theatrus.ed25519, made by scripts/export-signing-key.sh)
+# scripts/pisign.py signs it in Python, so no PixInsight is needed. Without it,
+# a headless PixInsight signs with $PIXINSIGHT_XSSK (+
+# $PIXINSIGHT_XSSK_PASSWORD_FILE), default ~/.pixinsight-signing/theatrus.xssk.
+# On by default; PIXINSIGHT_SIGN=0 builds an unsigned package.
 #
 # The theatrus id is a Certified PixInsight Developer from the 2026-09-27
 # developer list (1.9.5 build 1706). PixInsight refuses to run a script signed
 # by an id missing from its list, so users on an older list must run Check for
 # Updates; an unsigned script runs everywhere with a warning.
+rawkey="${PIXINSIGHT_ED25519_KEY:-$HOME/.pixinsight-signing/theatrus.ed25519}"
 xssk="${PIXINSIGHT_XSSK:-$HOME/.pixinsight-signing/theatrus.xssk}"
 xssk_pw="${PIXINSIGHT_XSSK_PASSWORD_FILE:-${xssk}.password}"
 pi="${PIXINSIGHT_DIR:-$HOME/PixInsight}"
-if [ "${PIXINSIGHT_SIGN:-1}" = "1" ]; then
+# Only the entry point carries a signature, as PixInsight's own packages do: a
+# script signature needs the script id from #feature-id, and the signed source
+# is the preprocessed script, includes and all.
+entry="$stage/src/scripts/ForaxxPalette/ForaxxPalette.js"
+if [ "${PIXINSIGHT_SIGN:-1}" = "1" ] && [ -f "$rawkey" ]; then
+   python3 "$here/scripts/pisign.py" sign "$entry" --key-file "$rawkey" | sed "s|$stage/||"
+elif [ "${PIXINSIGHT_SIGN:-1}" = "1" ]; then
    for f in "$xssk" "$xssk_pw" "$pi/bin/PixInsight"; do
       if [ ! -e "$f" ]; then
-         echo "code signing needs $f (set PIXINSIGHT_SIGN=0 for an unsigned build)" >&2
+         echo "code signing needs $rawkey, or $f (set PIXINSIGHT_SIGN=0 for an unsigned build)" >&2
          exit 1
       fi
    done
-   # Only the entry point carries a signature, as PixInsight's own packages
-   # do: a script signature needs the script id from #feature-id, and the
-   # signed source is the preprocessed script, includes and all.
-   files="$stage/src/scripts/ForaxxPalette/ForaxxPalette.js"
+   files="$entry"
    signer="$stage/sign-scripts.js"
    python3 - "$here/scripts/sign-scripts.js" "$signer" "$xssk" "$xssk_pw" "$stage/sign-result.txt" "$files" <<'PY'
 import sys, json

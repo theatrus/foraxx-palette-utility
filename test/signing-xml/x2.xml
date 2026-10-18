@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xri version="1.0">
+   <description>
+      <p>
+         Two   spaces   and
+         a line break.
+      </p>
+   </description>
+   <platform os="all" arch="noarch" version="1.9.4:1.9.99">
+      <package fileName="FPU.zip" sha1="abc" type="script" releaseDate="20261018"/>
+   </platform>
+</xri>
+<Signature developerId="theatrus" timestamp="2026-10-18T22:00:34.710Z" encoding="Base64">/K7amnJEEE0EVFjZR08tyJ2i85mv0X0D2nerngL03Iy7/60RI3poi6Leap5HWR/Cz9TR21lkcv7HoenYpBdBBA==</Signature>
