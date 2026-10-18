@@ -128,11 +128,23 @@ PIXINSIGHT_DIR=~/PixInsight ./test/run-headless.sh
 ```
 
 writes `dist/` with the new package zip, the legacy zip and a standalone
-`updates.xri` with the right SHA-1 digests. To publish, copy the new zip into
-`packages/` of
-[theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository),
-update its `packages.json`, and push; `dist/updates.xri` is only needed if you
-host the package somewhere on its own.
+`updates.xri` with the right SHA-1 digests. `dist/updates.xri` is only needed
+if you host the package somewhere on its own.
+
+To publish, set `VERSION` in `ForaxxPalette.js`, add a version history line,
+commit, and run
+
+```
+./release.sh [--dry-run] [summary]
+```
+
+It checks that this repository and a checkout of
+[theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository)
+(`$PIXINSIGHT_REPO`, default `~/repos/pixinsight-repository`) are clean and up
+to date, runs the tests, builds the signed package, swaps it into
+`packages/` and `packages.json` there, runs `build-index.py --check`, then
+commits, tags this repository `v<version>` and pushes both. `--dry-run` stops
+before committing.
 
 `build.sh` signs the entry script as the Certified PixInsight Developer
 `theatrus`, using a headless PixInsight at `$PIXINSIGHT_DIR` (default
