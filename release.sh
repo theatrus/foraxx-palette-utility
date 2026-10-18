@@ -7,8 +7,9 @@
 # Before running: set VERSION in src/scripts/ForaxxPalette/ForaxxPalette.js,
 # add a line to its version history, and commit. Then this script:
 #   1. checks that both repositories are clean and up to date with origin,
-#   2. runs the headless test suite,
-#   3. builds the signed package with build.sh,
+#   2. runs the headless test suite and the signing tests,
+#   3. builds the signed package with build.sh and verifies its signature
+#      with scripts/pisign.py,
 #   4. replaces the V8 package in the repository checkout and updates its
 #      packages.json entry (file, release date, title), then runs
 #      build-index.py --check,
@@ -58,6 +59,7 @@ grep -q "^ \* $version " "$here/src/scripts/ForaxxPalette/ForaxxPalette.js" ||
 }
 grep -E '^(RESULT|LOAD CHECK)' /tmp/foraxx-release-test.$$
 rm -f /tmp/foraxx-release-test.$$
+python3 "$here/test/pisign-test.py" | grep '^RESULT' || die "signing tests failed"
 
 # 3. Signed build. build.sh stops if it cannot sign; check the package anyway.
 dist="$(mktemp -d)"
@@ -66,7 +68,12 @@ PIXINSIGHT_SIGN=1 "$here/build.sh" "$dist" >/dev/null
 zip="$(cd "$dist" && ls FPU_*.zip | grep -v '^FPU_202412230653\.zip$')"
 [ "$(echo "$zip" | wc -l)" = "1" ] || die "expected one new package in $dist, found: $zip"
 unzip -l "$dist/$zip" | grep -q 'src/scripts/ForaxxPalette/ForaxxPalette.xsgn' || die "$zip carries no signature"
-echo "built $zip (signed)"
+# Check the signature independently of PixInsight.
+mkdir "$dist/check"
+unzip -q "$dist/$zip" -d "$dist/check"
+python3 "$here/scripts/pisign.py" verify "$dist/check/src/scripts/ForaxxPalette/ForaxxPalette.js" >/dev/null ||
+   die "$zip: signature does not verify against the theatrus public key"
+echo "built $zip (signed, signature verified)"
 
 # 4. Swap the package into the repository checkout.
 old="$(python3 - "$repo/packages.json" "$zip" "$title" <<'PY'

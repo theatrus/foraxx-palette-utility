@@ -156,6 +156,11 @@ signed script when its developer list predates the signing id; the `theatrus`
 id is listed from the 2026-09-27 list on, so users on an older one should run
 Resources > Updates > Check for Updates.
 
+`scripts/pisign.py` checks and makes the same signatures without PixInsight
+(`pisign.py verify <script>`); [docs/script-signing.md](docs/script-signing.md)
+describes the format. `python3 test/pisign-test.py` checks it against
+signatures PixInsight made, kept in `test/signing/`.
+
 ## Porting notes
 
 Changes needed for the V8 runtime, following Pleiades' porting guide:

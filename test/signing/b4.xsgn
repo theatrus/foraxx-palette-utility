@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+PixInsight XML Code Signature Format - XSGN version 1.0
+Created with PixInsight software - https://pixinsight.com/
+-->
+<xsgn version="1.0" xmlns="http://www.pixinsight.com/xsgn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.pixinsight.com/xsgn http://pixinsight.com/xsgn/xsgn-1.0.xsd">
+   <CreationTime>2026-10-18T21:13:29.656Z</CreationTime>
+   <Signature version="1.0" scriptId="B4" developerId="theatrus">
+      <Timestamp>2026-10-18T21:13:29.656Z</Timestamp>
+      <CodeSignature encoding="Base64">86P5I5WzDo/CQnP99VRmW3AkoH5stJ0nKp/c3fLGVp06b44Zz5xJawnHcppVeNJXOke522e55L+fv2yZvAvZCQ==</CodeSignature>
+   </Signature>
+</xsgn>
