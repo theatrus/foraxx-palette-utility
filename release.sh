@@ -10,20 +10,24 @@
 #   2. runs the headless test suite and the signing tests,
 #   3. builds the signed package with build.sh and verifies its signature
 #      with scripts/pisign.py,
-#   4. replaces the V8 package in the repository checkout and updates its
-#      packages.json entry (file, release date, title), then runs
+#   4. replaces the V8 package in the repository checkout, updates its
+#      packages.json entry (file, release date, title), writes and signs
+#      updates.xri there with scripts/pisign.py, then runs
 #      build-index.py --check,
 #   5. commits there as "Foraxx Palette Utility <version>[: summary]", tags
 #      this repository v<version>, and pushes both.
 # --dry-run stops after step 4 and leaves the repository checkout modified
 # for inspection (git -C <repo> checkout . && git -C <repo> clean -f to undo).
 #
-# Env:   PIXINSIGHT_REPO  repository checkout (default: ~/repos/pixinsight-repository)
+# Env:   PIXINSIGHT_REPO         repository checkout (default: ~/repos/pixinsight-repository)
+#        PIXINSIGHT_ED25519_KEY  raw signing key (default: ~/.pixinsight-signing/theatrus.ed25519,
+#                                made by scripts/export-signing-key.sh)
 #        plus everything build.sh and test/run-headless.sh read.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="${PIXINSIGHT_REPO:-$HOME/repos/pixinsight-repository}"
+key="${PIXINSIGHT_ED25519_KEY:-$HOME/.pixinsight-signing/theatrus.ed25519}"
 dry=0
 if [ "${1:-}" = "--dry-run" ]; then
    dry=1
@@ -50,6 +54,7 @@ git -C "$here" rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $ta
 grep -q "\"$title\"" "$repo/packages.json" && die "$title is already in packages.json"
 grep -q "^ \* $version " "$here/src/scripts/ForaxxPalette/ForaxxPalette.js" ||
    die "no version history line for $version in ForaxxPalette.js"
+[ -f "$key" ] || die "no signing key at $key (run scripts/export-signing-key.sh)"
 
 # 2. Tests.
 "$here/test/run-headless.sh" >/tmp/foraxx-release-test.$$ 2>&1 || {
@@ -64,7 +69,7 @@ python3 "$here/test/pisign-test.py" | grep '^RESULT' || die "signing tests faile
 # 3. Signed build. build.sh stops if it cannot sign; check the package anyway.
 dist="$(mktemp -d)"
 trap 'rm -rf "$dist"' EXIT
-PIXINSIGHT_SIGN=1 "$here/build.sh" "$dist" >/dev/null
+PIXINSIGHT_SIGN=1 PIXINSIGHT_ED25519_KEY="$key" "$here/build.sh" "$dist" >/dev/null
 zip="$(cd "$dist" && ls FPU_*.zip | grep -v '^FPU_202412230653\.zip$')"
 [ "$(echo "$zip" | wc -l)" = "1" ] || die "expected one new package in $dist, found: $zip"
 unzip -l "$dist/$zip" | grep -q 'src/scripts/ForaxxPalette/ForaxxPalette.xsgn' || die "$zip carries no signature"
@@ -99,7 +104,10 @@ PY
 )"
 git -C "$repo" rm -q "$old"
 cp "$dist/$zip" "$repo/packages/$zip"
-git -C "$repo" add "packages/$zip" packages.json
+(cd "$repo" && ./build-index.py --xri) > "$repo/updates.xri"
+python3 "$here/scripts/pisign.py" sign "$repo/updates.xri" --key-file "$key" >/dev/null
+python3 "$here/scripts/pisign.py" verify "$repo/updates.xri" >/dev/null || die "updates.xri: signature does not verify"
+git -C "$repo" add "packages/$zip" packages.json updates.xri
 (cd "$repo" && ./build-index.py --check)
 echo "replaced $old with packages/$zip in $repo"
 
