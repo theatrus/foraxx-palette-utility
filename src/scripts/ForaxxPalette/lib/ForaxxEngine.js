@@ -142,6 +142,24 @@ class ForaxxParameters
       this.hoBias = 0.5;
       this.hoContrast = 1.0;
 
+      // Smoothed masks (Foraxx only): the o and ho factors are computed from
+      // Gaussian-blurred copies of the shaped Ha and OIII, so that noise does
+      // not flip each pixel between SII and Ha in red, or Ha and OIII in
+      // green. The colour terms keep full detail. Sigma is in pixels.
+      this.smoothMasks = true;
+      this.maskSmoothing = 2.0;
+
+      // Colour noise reduction: removes the finest wavelet layers of the
+      // chrominance (CIE a*, b*) of the palette image before the
+      // adjustments. Lightness is left alone.
+      this.colourNoiseReduction = false;
+      this.colourNoiseLayers = 2;
+
+      // Keeps the saturation steps of the standard adjustments off the dark
+      // background: no boost at or below saturationBackground (L*), full
+      // boost from twice that.
+      this.protectBackground = false;
+
       // Channel-ratio masks: OIII/(Ha+OIII) and SII/(Ha+SII), faded out
       // where the mean signal is below the threshold.
       this.createRatioMasks = false;
@@ -168,6 +186,9 @@ class ForaxxParameters
          [ "siiMidtone", DataType.Double ], [ "haMidtone", DataType.Double ], [ "oiiiMidtone", DataType.Double ],
          [ "oBias", DataType.Double ], [ "oContrast", DataType.Double ],
          [ "hoBias", DataType.Double ], [ "hoContrast", DataType.Double ],
+         [ "smoothMasks", DataType.Boolean ], [ "maskSmoothing", DataType.Double ],
+         [ "colourNoiseReduction", DataType.Boolean ], [ "colourNoiseLayers", DataType.Double ],
+         [ "protectBackground", DataType.Boolean ],
          [ "outputId", DataType.String ],
          [ "createStars", DataType.Boolean ], [ "createCombined", DataType.Boolean ],
          [ "createFactorImages", DataType.Boolean ], [ "applyAdjustments", DataType.Boolean ],
@@ -218,6 +239,10 @@ class ForaxxParameters
       for ( let [label, c] of [ [ "o", this.oContrast ], [ "ho", this.hoContrast ] ] )
          if ( !(c > 0) || !isFinite( c ) )
             return "The " + label + " mask contrast must be a positive number.";
+      if ( !(this.maskSmoothing > 0 && this.maskSmoothing <= 25) )
+         return "The mask smoothing must be more than 0 and at most 25 pixels.";
+      if ( !(this.colourNoiseLayers >= 1 && this.colourNoiseLayers <= 4) )
+         return "The colour noise scale must be between 1 and 4 layers.";
       if ( !(this.ratioThreshold >= 0 && this.ratioThreshold < 1) )
          return "The ratio mask threshold must be between 0 and 1.";
       if ( !(this.saturationAmount >= 0) || !(this.saturationBackground >= 0 && this.saturationBackground < 1) )
@@ -352,6 +377,13 @@ const ForaxxExpressions = {
       return `max(0, (CIEL($T) - ${background})/(1 - ${background})) * (1 - ${sat})`;
    },
 
+   // Background mask for an RGB image: 0 at or below the background L*,
+   // rising to 1 at twice that value
+   backgroundMask( background )
+   {
+      return `max(0, min(1, (CIEL($T) - ${background})/max(1e-6, ${background})))`;
+   },
+
    // Screen blend: ~(~a*~b)
    screen( a, b )
    {
@@ -428,12 +460,18 @@ function createImage( targetView, newImageId, colorSpace, r, g = "", b = "", sho
 }
 
 /*
- * Standard adjustments applied to the palette image.
+ * Standard adjustments applied to the palette image: two hue curves, a
+ * saturation curve and a selective saturation boost.
+ *
+ * With a background threshold, the result is blended through a mask that is
+ * black at or below it and white from twice it (see
+ * ForaxxExpressions.backgroundMask, computed before the adjustments): the
+ * full adjustments where the mask is white, the hue curves alone where it
+ * is black. Without one, the result is the original script's.
  */
-function applyForaxxAdjustments( view )
+function applyForaxxAdjustments( view, background = null )
 {
-   let C1 = new CurvesTransformation;
-   C1.H = [ // x, y
+   let hue = [ // x, y
       [0.00000, 0.00000],
       [0.02517, 0.05952],
       [0.07323, 0.08571],
@@ -441,6 +479,9 @@ function applyForaxxAdjustments( view )
       [0.62014, 0.67619],
       [1.00000, 1.00000]
    ];
+
+   let C1 = new CurvesTransformation;
+   C1.H = hue;
    C1.Ht = CurvesTransformation.AkimaSubsplines;
    C1.S = [ // x, y
       [0.00000, 0.00000],
@@ -448,7 +489,6 @@ function applyForaxxAdjustments( view )
       [1.00000, 1.00000]
    ];
    C1.St = CurvesTransformation.AkimaSubsplines;
-   C1.executeOn( view );
 
    let C2 = new CurvesTransformation;
    C2.H = [ // x, y
@@ -459,7 +499,6 @@ function applyForaxxAdjustments( view )
       [1.00000, 1.00000]
    ];
    C2.Ht = CurvesTransformation.AkimaSubsplines;
-   C2.executeOn( view );
 
    let S = new ColorSaturation;
    S.HS = [ // x, y
@@ -477,9 +516,50 @@ function applyForaxxAdjustments( view )
    ];
    S.HSt = ColorSaturation.AkimaSubsplines;
    S.hueShift = 0.000;
-   // The original script applies the saturation boost twice.
-   S.executeOn( view );
-   S.executeOn( view );
+
+   let mask = null, hueOnly = null;
+   try
+   {
+      if ( background != null )
+      {
+         mask = createImage( view, uniqueViewId( "fpx_bgmask" ), PixelMath.Gray,
+                             ForaxxExpressions.backgroundMask( background ), "", "", false );
+         hueOnly = createImage( view, uniqueViewId( "fpx_hue" ), PixelMath.RGB, "$T[0]", "$T[1]", "$T[2]", false );
+         // The hue curves alone. A curve with only H set is the hue part
+         // of C1; splitting C1 in two passes would not give C1's result.
+         let C1h = new CurvesTransformation;
+         C1h.H = hue;
+         C1h.Ht = CurvesTransformation.AkimaSubsplines;
+         C1h.executeOn( hueOnly );
+         C2.executeOn( hueOnly );
+      }
+
+      C1.executeOn( view );
+      C2.executeOn( view );
+      // The original script applies the saturation boost twice.
+      S.executeOn( view );
+      S.executeOn( view );
+
+      if ( mask != null )
+      {
+         let P = new PixelMath;
+         P.expression = `${mask.id}*$T + ~${mask.id}*${hueOnly.id}`;
+         P.useSingleExpression = true;
+         P.createNewImage = false;
+         P.rescale = false;
+         P.truncate = true;
+         P.truncateLower = 0;
+         P.truncateUpper = 1;
+         if ( !P.executeOn( view ) )
+            throw new Error( "PixelMath failed while protecting the background." );
+      }
+   }
+   finally
+   {
+      for ( let v of [ mask, hueOnly ] )
+         if ( v != null )
+            v.window.forceClose();
+   }
 }
 
 /*
@@ -543,11 +623,50 @@ function applyLightnessLift( view, lift )
 }
 
 /*
+ * Colour noise reduction: removes the first `layers` wavelet layers (scales
+ * of 1, 2, 4, 8 pixels) of the chrominance of an RGB image. Lightness is
+ * left alone.
+ */
+function applyColourNoiseReduction( view, layers )
+{
+   let M = new MultiscaleLinearTransform;
+   let rows = [];
+   for ( let i = 0; i < Math.max( 4, layers ); ++i )
+      rows.push( [ i >= layers/*enabled*/, true, 0.000, false, 3.000, 1.00, 1 ] );
+   rows.push( [ true, true, 0.000, false, 3.000, 1.00, 1 ] ); // residual
+   M.layers = rows;
+   M.toLuminance = false;
+   M.toChrominance = true;
+   M.linear = false;
+   M.executeOn( view );
+}
+
+/*
+ * Creates a hidden grayscale image of expr, evaluated on targetView, and
+ * blurs it with a Gaussian of the given sigma in pixels. Returns the view.
+ */
+function createSmoothedImage( targetView, newImageId, expr, sigma )
+{
+   let view = createImage( targetView, newImageId, PixelMath.Gray, expr, "", "", false );
+   let C = new Convolution;
+   C.mode = Convolution.Parametric;
+   C.sigma = sigma;
+   C.shape = 2;
+   C.aspectRatio = 1;
+   C.rotationAngle = 0;
+   C.executeOn( view );
+   return view;
+}
+
+/*
  * Builds the palette image and, if requested, the stars and combined
  * images, from a validated ForaxxParameters object.
  *
  * options.show (default true): show the created image windows. The preview
  * passes false and closes them itself.
+ * options.scale (default 1): the size of the inputs relative to the full
+ * image. The preview passes its downsampling factor so that mask smoothing
+ * and colour noise reduction work at the same scale as on the full image.
  *
  * Returns { foraxx: View, stars: View|null, combined: View|null,
  *           factors: Array of View, masks: Array of View }.
@@ -558,6 +677,7 @@ function buildForaxx( params, options = {} )
    if ( error )
       throw new Error( error );
    let show = options.show !== false;
+   let scale = options.scale ?? 1;
 
    let palette = paletteById( params.palette );
    let X = ForaxxExpressions;
@@ -584,17 +704,49 @@ function buildForaxx( params, options = {} )
    console.writeln( "<end><cbr><br>" + TITLE + ": building " + palette.name + " from "
                     + (params.threeChannels ? "SII, Ha and OIII" : "Ha and OIII") );
 
+   // The dynamic factors come from the same channels, blurred if asked, in
+   // hidden images closed before returning. Below a third of a pixel (a
+   // small preview) the blur does nothing visible and is skipped.
+   let temporary = [];
+   try
+   {
+      let factorSources = nebula;
+      let sigma = params.maskSmoothing*scale;
+      if ( palette.dynamic && params.smoothMasks && sigma >= 0.3 )
+      {
+         console.writeln( format( "Smoothing the Ha and OIII mask sources (sigma %.2f px) ...", sigma ) );
+         temporary.push( createSmoothedImage( params.ha, uniqueViewId( "fpx_mask_Ha" ), nebula.h, sigma ) );
+         temporary.push( createSmoothedImage( params.ha, uniqueViewId( "fpx_mask_OIII" ), nebula.o, sigma ) );
+         factorSources = { s: nebula.s, h: temporary[0].id, o: temporary[1].id };
+      }
+      return buildForaxxImages( params, palette, ids, nebula, factorSources, shaping, show, scale );
+   }
+   finally
+   {
+      for ( let v of temporary )
+         v.window.forceClose();
+   }
+}
+
+/*
+ * buildForaxx() after the inputs are checked and the identifiers chosen.
+ * factorSources holds the h and o expressions the dynamic factors use.
+ */
+function buildForaxxImages( params, palette, ids, nebula, factorSources, shaping, show, scale )
+{
+   let X = ForaxxExpressions;
+
    let factors = [];
    if ( palette.dynamic && params.createFactorImages )
    {
       console.writeln( "Creating the 'HO' dynamic PixelMath factor image: " + ids.ho );
       factors.push( createImage( params.ha, ids.ho, PixelMath.Gray,
-                                 X.shapedFactor( X.hoFactor( nebula.h, nebula.o ), shaping.hoBias, shaping.hoContrast ), "", "", show ) );
+                                 X.shapedFactor( X.hoFactor( factorSources.h, factorSources.o ), shaping.hoBias, shaping.hoContrast ), "", "", show ) );
       if ( params.threeChannels )
       {
          console.writeln( "Creating the 'O' dynamic PixelMath factor image: " + ids.o );
          factors.push( createImage( params.ha, ids.o, PixelMath.Gray,
-                                    X.shapedFactor( X.oFactor( nebula.o ), shaping.oBias, shaping.oContrast ), "", "", show ) );
+                                    X.shapedFactor( X.oFactor( factorSources.o ), shaping.oBias, shaping.oContrast ), "", "", show ) );
       }
    }
 
@@ -614,12 +766,20 @@ function buildForaxx( params, options = {} )
    }
 
    console.writeln( "Creating the " + palette.id + " image: " + ids.result );
-   let [r, g, b] = paletteExpressions( palette, params.threeChannels, nebula, nebula, shaping );
+   let [r, g, b] = paletteExpressions( palette, params.threeChannels, factorSources, nebula, shaping );
    let foraxx = createImage( params.ha, ids.result, PixelMath.RGB, r, g, b, show );
+   // Wavelet layers are dyadic: on a half-size preview, one layer fewer.
+   let layers = Math.round( params.colourNoiseLayers + Math.log2( scale ) );
+   if ( params.colourNoiseReduction && layers >= 1 )
+   {
+      console.writeln( "Removing " + layers + " chrominance wavelet layer" + (layers > 1 ? "s" : "") + " ..." );
+      applyColourNoiseReduction( foraxx, layers );
+   }
    if ( params.applyAdjustments )
    {
-      console.writeln( "Applying curves and saturation adjustments ..." );
-      applyForaxxAdjustments( foraxx );
+      console.writeln( "Applying curves and saturation adjustments"
+                       + (params.protectBackground ? " (saturation masked below L* " + params.saturationBackground + ")" : "") + " ..." );
+      applyForaxxAdjustments( foraxx, params.protectBackground ? params.saturationBackground : null );
    }
    if ( params.protectedSaturation && params.saturationAmount > 0 )
    {
@@ -641,7 +801,7 @@ function buildForaxx( params, options = {} )
          o: params.oiiiStars.id
       };
       console.writeln( "Creating the stars image: " + ids.stars );
-      let [rs, gs, bs] = paletteExpressions( palette, params.threeChannels, nebula, starSources, shaping );
+      let [rs, gs, bs] = paletteExpressions( palette, params.threeChannels, factorSources, starSources, shaping );
       stars = createImage( params.ha, ids.stars, PixelMath.RGB, rs, gs, bs, show );
       if ( params.applyAdjustments )
       {
@@ -789,7 +949,7 @@ function renderPreview( params, options = 480 )
       for ( let k in small )
          p[k] = small[k];
 
-      let r = buildForaxx( p, { show: false } );
+      let r = buildForaxx( p, { show: false, scale } );
       for ( let v of [ r.foraxx, r.stars, r.combined ].concat( r.factors, r.masks ) )
          if ( v != null )
             created.push( v.window );

@@ -396,12 +396,13 @@ class ForaxxDialog extends Dialog
          + "Handy for a quick look; for the final image you will usually blend the stars yourself.</p>" );
 
       this.factors_CheckBox = this.createCheckBox( "Create the dynamic factor images (o, ho)", "createFactorImages",
-         "<p>Shows the Foraxx factor images as separate grayscale images, after bias and contrast. They are informative only; "
+         "<p>Shows the Foraxx factor images as separate grayscale images, after smoothing, bias and contrast. They are informative only; "
          + "the palette image does not depend on them.</p>" );
 
       this.adjustments_CheckBox = this.createCheckBox( "Apply the standard curves and saturation adjustments", "applyAdjustments",
          "<p>Applies the Foraxx hue and saturation curves to the palette image, and a hue curve "
-         + "to the stars image. Uncheck this to get the raw PixelMath output and do your own adjustments.</p>" );
+         + "to the stars image. Uncheck this to get the raw PixelMath output and do your own adjustments.</p>",
+         () => this.updateControls() );
 
       // ---- Preview -----------------------------------------------------------
 
@@ -482,9 +483,22 @@ class ForaxxDialog extends Dialog
       this.hoContrast_Control = this.createNumericControl( "ho contrast:", "hoContrast", labelWidth, 0.25, 4.0, 2,
          "<p>Steepens the ho factor around 0.5, sharpening the transition between Ha and OIII in green. 1 is neutral.</p>" );
 
+      this.smoothMasks_CheckBox = this.createCheckBox( "Smooth the masks", "smoothMasks",
+         "<p>Computes the o and ho factors from blurred copies of Ha and OIII. Without this, noise in OIII "
+         + "flips each pixel between SII and Ha in red and between Ha and OIII in green, which shows as colour speckle. "
+         + "The colour itself still comes from the unblurred channels, so detail is kept. "
+         + "Uncheck to reproduce the original palette exactly.</p>",
+         () => this.updateControls() );
+      this.maskSmoothing_Control = this.createNumericControl( "Mask blur:", "maskSmoothing", labelWidth, 0.5, 25.0, 1,
+         "<p>Standard deviation of the Gaussian blur applied to the mask sources, in pixels of the full image. "
+         + "Raise it for noisy OIII; the masks only need to follow large structures. Large values soften the "
+         + "boundaries between colours, so colour can spread a little past the edges of structures.</p>" );
+
       this.masks_Sizer = new VerticalSizer;
       this.masks_Sizer.margin = 6;
       this.masks_Sizer.spacing = 4;
+      this.masks_Sizer.add( this.smoothMasks_CheckBox );
+      this.masks_Sizer.add( this.maskSmoothing_Control );
       this.masks_Sizer.add( this.oBias_Control );
       this.masks_Sizer.add( this.oContrast_Control );
       this.masks_Sizer.add( this.hoBias_Control );
@@ -504,6 +518,20 @@ class ForaxxDialog extends Dialog
       this.ratioThreshold_Control = this.createNumericControl( "Ratio threshold:", "ratioThreshold", labelWidth, 0.0, 0.5, 3,
          "<p>Mean signal below which the ratio masks fade to black, so faint, unstable ratios do not select the background.</p>" );
 
+      this.colourNoise_CheckBox = this.createCheckBox( "Reduce colour noise", "colourNoiseReduction",
+         "<p>Removes the finest detail from the colour (CIE a* and b*) of the palette image, before the adjustments. "
+         + "Lightness, and so the visible detail, is left alone. Use it when faint areas show blotchy or blue colour noise.</p>",
+         () => this.updateControls() );
+      this.colourNoiseLayers_Control = this.createNumericControl( "Noise scale:", "colourNoiseLayers", labelWidth, 1, 4, 0,
+         "<p>How many wavelet layers of colour detail to remove: 1 removes 1 pixel scale noise, 2 up to 2 pixels, "
+         + "3 up to 4 pixels, 4 up to 8 pixels. 2 suits most data; use more for large colour blotches.</p>" );
+
+      this.protectBackground_CheckBox = this.createCheckBox( "Keep the standard saturation off the background", "protectBackground",
+         "<p>Keeps the saturation steps of the standard adjustments from boosting colour noise in the dark background: "
+         + "at or below the Background L* value only the hue curves apply, and from twice that value the full adjustments, "
+         + "blended in between.</p>",
+         () => this.updateControls() );
+
       this.protectedSaturation_CheckBox = this.createCheckBox( "Protected saturation boost", "protectedSaturation",
          "<p>Boosts colour saturation through a generated mask that excludes the dark background and pixels that "
          + "are already saturated. The mask is left open as &lt;result&gt;_satmask.</p>",
@@ -511,7 +539,8 @@ class ForaxxDialog extends Dialog
       this.saturationAmount_Control = this.createNumericControl( "Saturation:", "saturationAmount", labelWidth, 0.0, 1.0, 2,
          "<p>Saturation increase, as ColorSaturation understands it: 0.25 raises saturation by about a quarter where the mask is white.</p>" );
       this.saturationBackground_Control = this.createNumericControl( "Background L*:", "saturationBackground", labelWidth, 0.0, 0.5, 3,
-         "<p>CIE L* lightness below which pixels are protected from the saturation boost.</p>" );
+         "<p>CIE L* lightness below which pixels are protected from the protected saturation boost and, if checked, "
+         + "from the standard saturation steps.</p>" );
 
       this.lightnessLift_Control = this.createNumericControl( "L* lift:", "lightnessLift", labelWidth, -0.3, 0.3, 3,
          "<p>Colour-preserving brightness: a curve on the CIE L* channel only, through (0.5, 0.5 + lift). "
@@ -520,10 +549,13 @@ class ForaxxDialog extends Dialog
       this.extras_Sizer = new VerticalSizer;
       this.extras_Sizer.margin = 6;
       this.extras_Sizer.spacing = 4;
+      this.extras_Sizer.add( this.colourNoise_CheckBox );
+      this.extras_Sizer.add( this.colourNoiseLayers_Control );
       this.extras_Sizer.add( this.ratio_CheckBox );
       this.extras_Sizer.add( this.ratioThreshold_Control );
       this.extras_Sizer.add( this.protectedSaturation_CheckBox );
       this.extras_Sizer.add( this.saturationAmount_Control );
+      this.extras_Sizer.add( this.protectBackground_CheckBox );
       this.extras_Sizer.add( this.saturationBackground_Control );
       this.extras_Sizer.add( this.lightnessLift_Control );
 
@@ -816,11 +848,15 @@ class ForaxxDialog extends Dialog
       this.combined_CheckBox.enabled = stars;
       this.factors_CheckBox.enabled = dynamic;
       this.masks_GroupBox.enabled = dynamic;
+      this.maskSmoothing_Control.enabled = dynamic && this.params.smoothMasks;
       this.oBias_Control.enabled = dynamic && three;
       this.oContrast_Control.enabled = dynamic && three;
       this.ratioThreshold_Control.enabled = this.params.createRatioMasks;
       this.saturationAmount_Control.enabled = this.params.protectedSaturation;
-      this.saturationBackground_Control.enabled = this.params.protectedSaturation;
+      this.colourNoiseLayers_Control.enabled = this.params.colourNoiseReduction;
+      this.protectBackground_CheckBox.enabled = this.params.applyAdjustments;
+      this.saturationBackground_Control.enabled = this.params.protectedSaturation
+                                                  || (this.params.protectBackground && this.params.applyAdjustments);
 
       this.sii_Row.label.enabled = three;
       this.sii_Row.viewList.enabled = three;

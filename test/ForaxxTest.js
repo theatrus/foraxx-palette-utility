@@ -170,6 +170,7 @@ function run()
       p.threeChannels = true;
       p.createStars = true;
       p.applyAdjustments = false;
+      p.smoothMasks = false;
       p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
       p.siiStars = views.siiStars; p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
 
@@ -202,6 +203,7 @@ function run()
       p.threeChannels = false;
       p.createStars = true;
       p.applyAdjustments = false;
+      p.smoothMasks = false;
       p.ha = views.ha; p.oiii = views.oiii;
       p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
 
@@ -332,6 +334,7 @@ function run()
       p.createFactorImages = false;
       p.createStars = true;
       p.applyAdjustments = false;
+      p.smoothMasks = false;
       p.outputId = "Gain";
       p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
       p.siiStars = views.siiStars; p.haStars = views.haStars; p.oiiiStars = views.oiiiStars;
@@ -447,6 +450,7 @@ function run()
       p.applyAdjustments = false;
       p.createStars = true;
       p.createCombined = false;
+      p.smoothMasks = false;
       p.sii = cviews.sii; p.ha = cviews.ha; p.oiii = cviews.oiii;
       p.siiStars = cviews.sii; p.haStars = cviews.haStars; p.oiiiStars = cviews.oiiiStars;
 
@@ -462,9 +466,12 @@ function run()
              "preview: pixel matches the formula (" + [R, G, B].join() + " vs " + want.join() + ")" );
 
       p.applyAdjustments = true; p.createCombined = true; p.protectedSaturation = true; p.lightnessLift = 0.1;
+      p.smoothMasks = true; p.maskSmoothing = 2; p.colourNoiseReduction = true; p.colourNoiseLayers = 3; p.protectBackground = true;
       let before2 = ImageWindow.windows.length;
       let r2 = renderPreview( p, 32 );
-      check( r2.bitmap != null && ImageWindow.windows.length == before2, "preview: adjustments, combined and protected saturation render and clean up" );
+      check( r2.bitmap != null && ImageWindow.windows.length == before2,
+             "preview: adjustments, combined, protected saturation, smoothed masks and colour noise reduction render and clean up" );
+      p.smoothMasks = false; p.colourNoiseReduction = false; p.protectBackground = false;
 
       p.threeChannels = false; p.createStars = false;
       let r3 = renderPreview( p, 16 );
@@ -550,6 +557,22 @@ function run()
       d.reset_ToolButton.onClick();
       check( near( p.oBias, 0.5 ) && p.createRatioMasks === false && near( d.oBias_Control.value, 0.5 ) && !d.ratio_CheckBox.checked, "dialog: reset clears the new options" );
 
+      check( p.smoothMasks === true && d.smoothMasks_CheckBox.checked && d.maskSmoothing_Control.enabled
+             && !d.colourNoise_CheckBox.checked && !d.colourNoiseLayers_Control.enabled && !d.protectBackground_CheckBox.checked,
+             "dialog: smoothed masks on, colour noise reduction and background protection off by default" );
+      d.smoothMasks_CheckBox.onCheck( false );
+      d.colourNoise_CheckBox.onCheck( true );
+      d.colourNoiseLayers_Control.onValueUpdated( 3 );
+      d.protectBackground_CheckBox.onCheck( true );
+      check( p.smoothMasks === false && !d.maskSmoothing_Control.enabled && p.colourNoiseReduction === true && d.colourNoiseLayers_Control.enabled
+             && near( p.colourNoiseLayers, 3 ) && p.protectBackground === true && d.saturationBackground_Control.enabled,
+             "dialog: noise controls update the parameters and their dependent controls" );
+      d.adjustments_CheckBox.onCheck( false );
+      check( !d.protectBackground_CheckBox.enabled && !d.saturationBackground_Control.enabled, "dialog: background protection needs the standard adjustments" );
+      d.reset_ToolButton.onClick();
+      check( p.smoothMasks === true && p.colourNoiseReduction === false && p.protectBackground === false && d.smoothMasks_CheckBox.checked,
+             "dialog: reset restores the noise options" );
+
       // Preview through the dialog: schedule does nothing without inputs;
       // renderPreviewNow reports a message, then a bitmap once images exist.
       check( d.renderPreviewNow() === false && d.preview_Control.bitmap == null && d.preview_Control.message.indexOf( "select an image" ) >= 0,
@@ -619,6 +642,7 @@ function run()
       p.applyAdjustments = false;
       p.createStars = false;
       p.outputId = "Shape";
+      p.smoothMasks = false;
       p.oBias = 0.3; p.oContrast = 2.0; p.hoBias = 0.6; p.hoContrast = 1.5;
       p.sii = views.sii; p.ha = views.ha; p.oiii = views.oiii;
 
@@ -641,6 +665,7 @@ function run()
       p.createStars = false;
       p.createFactorImages = false;
       p.outputId = "Mid";
+      p.smoothMasks = false;
       p.haMidtone = 0.3; p.oiiiMidtone = 0.7; p.oiiiGain = 1.2;
       p.ha = views.ha; p.oiii = views.oiii;
 
@@ -740,8 +765,11 @@ function run()
       let p = new ForaxxParameters;
       p.oBias = 0.3; p.hoContrast = 1.75; p.haMidtone = 0.4; p.createRatioMasks = true; p.ratioThreshold = 0.12;
       p.protectedSaturation = true; p.saturationAmount = 0.4; p.lightnessLift = 0.1;
+      p.smoothMasks = false; p.maskSmoothing = 3.5; p.colourNoiseReduction = true; p.colourNoiseLayers = 3; p.protectBackground = true;
       p.save();
       let q = new ForaxxParameters; q.load();
+      check( q.smoothMasks === false && near( q.maskSmoothing, 3.5 ) && q.colourNoiseReduction === true && near( q.colourNoiseLayers, 3 )
+             && q.protectBackground === true, "settings: noise options round trip" );
       check( near( q.oBias, 0.3 ) && near( q.hoContrast, 1.75 ) && near( q.haMidtone, 0.4 ) && q.createRatioMasks === true
              && near( q.ratioThreshold, 0.12 ) && q.protectedSaturation === true && near( q.saturationAmount, 0.4 ) && near( q.lightnessLift, 0.1 ),
              "settings: new options round trip" );
@@ -752,7 +780,118 @@ function run()
       v.oBias = 1.2; check( v.validate().indexOf( "bias" ) >= 0, "validate: rejects a bias outside (0,1)" ); v.oBias = 0.5;
       v.lightnessLift = 0.9; check( v.validate().indexOf( "lightness" ) >= 0, "validate: rejects a lift outside (-0.5,0.5)" ); v.lightnessLift = 0;
       v.hoContrast = 0; check( v.validate().indexOf( "contrast" ) >= 0, "validate: rejects a zero contrast" ); v.hoContrast = 1;
+      v.maskSmoothing = 0; check( v.validate().indexOf( "mask smoothing" ) >= 0, "validate: rejects a zero mask blur" );
+      v.maskSmoothing = 25; check( v.validate() == "", "validate: accepts a 25 px mask blur" );
+      v.maskSmoothing = 26; check( v.validate().indexOf( "mask smoothing" ) >= 0, "validate: rejects a mask blur above 25 px" ); v.maskSmoothing = 2;
+      v.colourNoiseLayers = 5; check( v.validate().indexOf( "colour noise" ) >= 0, "validate: rejects more than 4 colour noise layers" ); v.colourNoiseLayers = 2;
       check( v.validate() == "", "validate: accepts neutral shaping" );
+   }
+
+   // ---- Mode N: smoothed masks, colour noise reduction, background ------
+
+   {
+      // Pixel noise on a gradient, deterministic.
+      const hash = ( x, y ) => { let n = Math.sin( x*12.9898 + y*78.233 )*43758.5453; return n - Math.floor( n ) - 0.5; };
+      let noisyO = makeImage( "T_noisy_oiii", ( x, y ) => 0.15 + 0.3*( y/(H-1) ) + 0.12*hash( x, y ) );
+      // Mean absolute difference between horizontal neighbours: high for
+      // pixel noise, low for smooth gradients.
+      const roughness = ( fn ) =>
+      {
+         let sum = 0, n = 0;
+         for ( let y = 0; y < H; ++y )
+            for ( let x = 0; x + 1 < W; ++x, ++n )
+               sum += Math.abs( fn( x + 1, y ) - fn( x, y ) );
+         return sum/n;
+      };
+      let base = ( id ) =>
+      {
+         let p = new ForaxxParameters;
+         p.createStars = false;
+         p.applyAdjustments = false;
+         p.smoothMasks = false;
+         p.outputId = id;
+         p.sii = views.sii; p.ha = views.ha; p.oiii = noisyO;
+         return p;
+      };
+
+      // Smoothed masks: the factors are smooth, the colour terms are not.
+      let raw = buildForaxx( base( "NoiseRaw" ) );
+      let ps = base( "Smooth" ); ps.smoothMasks = true; ps.maskSmoothing = 2;
+      let before = ImageWindow.windows.length;
+      let sm = buildForaxx( ps );
+      check( ImageWindow.windows.length == before + 3 && View.viewById( "fpx_mask_Ha" ) == null && View.viewById( "fpx_mask_OIII" ) == null,
+             "N: smoothed masks leave only the result and the two factor images open" );
+      let oRaw = r => roughness( ( x, y ) => r.factors[1].image.sample( x, y, 0 ) );
+      check( oRaw( sm ) < 0.3*oRaw( raw ), format( "N: smoothing calms the o factor (roughness %.4f vs %.4f)", oRaw( sm ), oRaw( raw ) ) );
+      let fo = sm.factors[1].image, fho = sm.factors[0].image, res = sm.foraxx.image, okTerms = true;
+      for ( let [x, y] of samplePoints )
+      {
+         let S = src.sii( x, y ), Ha = src.ha( x, y ), O = noisyO.image.sample( x, y, 0 );
+         let want = [ F.blend( fo.sample( x, y, 0 ), S, Ha ), F.blend( fho.sample( x, y, 0 ), Ha, O ), O ];
+         for ( let c = 0; c < 3; ++c )
+            if ( !near( res.sample( x, y, c ), F.clamp( want[c] ) ) )
+               okTerms = false;
+      }
+      check( okTerms, "N: the palette mixes the unblurred channels with the smoothed factors" );
+      let st = base( "SmoothSHO" ); st.palette = "SHO"; st.smoothMasks = true;
+      let before2 = ImageWindow.windows.length;
+      buildForaxx( st );
+      check( ImageWindow.windows.length == before2 + 1, "N: a static palette makes no mask sources" );
+
+      // Colour noise reduction: colour calmer, lightness unchanged.
+      let pc = base( "Chroma" ); pc.colourNoiseReduction = true; pc.colourNoiseLayers = 2;
+      let cn = buildForaxx( pc );
+      let chroma = ( img ) => roughness( ( x, y ) => img.sample( x, y, 2 ) - 0.5*(img.sample( x, y, 0 ) + img.sample( x, y, 1 )) );
+      let cRaw = chroma( raw.foraxx.image ), cNR = chroma( cn.foraxx.image );
+      check( cNR < 0.6*cRaw, format( "N: colour noise reduction calms blue against red and green (roughness %.4f vs %.4f)", cNR, cRaw ) );
+      let L0 = createImage( raw.foraxx, "NoiseRaw_L", PixelMath.Gray, "CIEL($T)" ).image;
+      let L1 = createImage( cn.foraxx, "Chroma_L", PixelMath.Gray, "CIEL($T)" ).image;
+      let dL = 0;
+      for ( let y = 0; y < H; ++y )
+         for ( let x = 0; x < W; ++x )
+            dL = Math.max( dL, Math.abs( L0.sample( x, y, 0 ) - L1.sample( x, y, 0 ) ) );
+      check( dL < 2e-3, format( "N: colour noise reduction leaves L* alone (largest change %.5f)", dL ) );
+      checkInRange( cn.foraxx, "N: Chroma" );
+
+      // Background protection: below the threshold only the hue curves act.
+      let adj = ( id, bg ) =>
+      {
+         let p = base( id );
+         p.oiii = views.oiii;
+         p.createFactorImages = false;
+         p.applyAdjustments = true;
+         if ( bg != null ) { p.protectBackground = true; p.saturationBackground = bg; }
+         return buildForaxx( p ).foraxx.image;
+      };
+      let flat = base( "BgRaw" ); flat.oiii = views.oiii; flat.createFactorImages = false;
+      let Lb = createImage( buildForaxx( flat ).foraxx, "BgRaw_L", PixelMath.Gray, "CIEL($T)" ).image;
+      let U = adj( "BgOff", null ), P3 = adj( "Bg30", 0.3 ), P99 = adj( "Bg99", 0.99 ), P15 = adj( "Bg15", 0.15 );
+      check( View.viewById( "fpx_bgmask" ) == null && View.viewById( "fpx_hue" ) == null, "N: the background mask and hue-only copy are closed after the adjustments" );
+      let okDark = true, dark = 0, darkBoosted = 0, brightBoosted = 0, okFull = true, full = 0;
+      for ( let y = 0; y < H; y += 3 )
+         for ( let x = 0; x < W; x += 4 )
+         {
+            let l = Lb.sample( x, y, 0 );
+            let differs = ( a, b ) => [0, 1, 2].some( c => Math.abs( a.sample( x, y, c ) - b.sample( x, y, c ) ) > 1e-4 );
+            if ( l < 0.29 )
+            {
+               ++dark;
+               if ( differs( P3, P99 ) ) okDark = false;
+               if ( differs( U, P99 ) ) ++darkBoosted;
+            }
+            else if ( l > 0.5 && differs( P3, P99 ) )
+               ++brightBoosted;
+            if ( l > 0.31 )
+            {
+               ++full;
+               if ( differs( P15, U ) ) okFull = false;
+            }
+         }
+      check( dark > 0 && okDark, "N: below the background threshold the saturation steps do nothing (" + dark + " samples)" );
+      check( darkBoosted > 0, "N: without protection the saturation steps change the background" );
+      check( brightBoosted > 0, "N: above the threshold the saturation steps still act" );
+      check( full > 0 && okFull, "N: from twice the threshold the result is the unprotected one (" + full + " samples)" );
+      checkInRange( View.viewById( "Bg30" ), "N: Bg30" );
    }
 
    // ---- Error path: buildForaxx refuses an incomplete selection --------

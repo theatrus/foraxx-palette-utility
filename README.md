@@ -30,9 +30,11 @@ B  = OIII
 
 where `~x` is PixelMath's `1 - x`. With only Ha and OIII, `R = Ha`. The stars
 image uses the same mapping with the star images in the colour terms, while
-the dynamic factors still come from the starless images. After combination
-the script applies the same curves and selective saturation boost as the
-original utility.
+the dynamic factors still come from the starless images. By default the
+script computes `o` and `ho` from blurred copies of Ha and OIII (see
+**Smoothed masks** below); turn that off to get the original formulas
+exactly. After combination the script applies the same curves and selective
+saturation boost as the original utility.
 
 ## Options
 
@@ -57,8 +59,24 @@ original utility.
 - **Mask bias and contrast.** Reshape the two Foraxx mixing masks. Bias is a
   midtones balance on `o` (where SII replaces Ha in red) and on `ho` (where
   Ha replaces OIII in green); contrast steepens each around 0.5. Neutral
-  values reproduce the original palette exactly. The factor images show the
-  reshaped masks.
+  values, with smoothed masks off, reproduce the original palette exactly.
+  The factor images show the reshaped masks.
+- **Smoothed masks.** On by default. OIII is usually the noisiest channel,
+  and it drives both masks, so noise flips each pixel between SII and Ha in
+  red and between Ha and OIII in green, which shows as colour speckle. This
+  computes `o` and `ho` from Gaussian-blurred copies of the shaped Ha and
+  OIII (sigma in pixels, default 2, up to 25). The colour terms still use
+  the unblurred channels, so detail is kept. Raise the blur for noisy OIII;
+  large values soften the boundaries between colours.
+- **Colour noise reduction.** Off by default. Removes the finest one to four
+  wavelet layers (1 to 8 pixel scales) of the palette image's colour (CIE
+  a* and b*) before the adjustments, leaving lightness alone. Use it when
+  faint areas show blotchy or blue colour noise.
+- **Background protection.** Off by default. The standard adjustments turn
+  teal toward blue and then boost saturation, blue most of all, and that
+  boosts colour noise as much as colour. With this on, pixels at or below
+  the Background L* value get only the hue curves, pixels from twice that
+  value get the full adjustments, and pixels in between a blend.
 - **Channel-ratio masks.** Optional grayscale images `OIII/(Ha+OIII)` and
   `SII/(Ha+SII)`, named `<result>_ratio_OIII` and `_ratio_SII`, faded out
   below a mean-signal threshold so faint, unstable ratios do not select the
