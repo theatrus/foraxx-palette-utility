@@ -105,9 +105,9 @@ saturation boost as the original utility.
 Add `https://pixinsight.theatr.us/` under Resources > Updates > Manage
 Repositories, then check for updates. That repository
 ([theatrus/pixinsight-repository](https://github.com/theatrus/pixinsight-repository))
-serves this version to PixInsight 1.9.4 and later 1.9.x, and the legacy 1.16
-package to 1.8.9-3 through 1.9.3. The original publisher's URL,
-`https://foraxxpaletteutility.com/FPU/`, still serves 1.16 only.
+serves this version to PixInsight 1.9.4 and later 1.9.x. For PixInsight
+1.8.9-3 through 1.9.3, use the original publisher's repository,
+`https://foraxxpaletteutility.com/FPU/`, which serves 1.16.
 
 ### By hand
 
@@ -126,7 +126,7 @@ rsc/icons/script/ForaxxPalette/ForaxxPalette.svg  the menu icon
 test/ForaxxTest.js                               headless test suite
 test/run-headless.sh                             runs the suite in PixInsight
 build.sh                                         builds the update package and updates.xri
-legacy/FPU_202412230653.zip                      the original 1.16 package (SpiderMonkey)
+legacy/FPU_202412230653.zip                      the original 1.16 package (SpiderMonkey), without macOS metadata files
 ```
 
 ## Test

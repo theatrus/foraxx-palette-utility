@@ -86,7 +86,7 @@ import json, sys, datetime
 path, zip_name, title = sys.argv[1:4]
 with open(path, encoding="utf-8") as fh:
     data = json.load(fh)
-# The V8 package is the Foraxx entry for 1.9.4 and later; the legacy one stays.
+# The V8 package is the Foraxx entry for 1.9.4 and later.
 hits = [p for p in data["packages"]
         if p["title"].startswith("Foraxx Palette Utility ")
         and any(pl["version"].startswith("1.9.4:") for pl in p["platforms"])]
